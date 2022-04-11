@@ -22,7 +22,7 @@ func ExampleStateMachine_tollBooth() {
 	tollClosed.Permit(payUp, tollOpen, func(_ context.Context, pay float64) error {
 		if pay < passageCost {
 			// Barrier remains closed unless customer pays up
-			return fmt.Errorf("customer underpayed with $%.2f", pay)
+			return fmt.Errorf("customer underpaid with $%.2f", pay)
 		}
 		return nil
 	})
@@ -35,14 +35,14 @@ func ExampleStateMachine_tollBooth() {
 		if err != nil {
 			fmt.Println(err)
 		} else {
-			fmt.Printf("customer payed $%.2f, let them pass!\n", pay)
+			fmt.Printf("customer paid $%.2f, let them pass!\n", pay)
 			SM.FireBg(customerAdvances, 0)
 		}
 	}
 	//Output:
-	// customer payed $12.09, let them pass!
-	// customer payed $18.81, let them pass!
-	// customer payed $13.29, let them pass!
-	// guard clause failed: customer underpayed with $8.75
-	// guard clause failed: customer underpayed with $8.49
+	// customer paid $12.09, let them pass!
+	// customer paid $18.81, let them pass!
+	// customer paid $13.29, let them pass!
+	// guard clause failed: customer underpaid with $8.75
+	// guard clause failed: customer underpaid with $8.49
 }

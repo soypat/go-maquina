@@ -22,7 +22,7 @@ func main() {
 	tollClosed.Permit(payUp, tollOpen, func(_ context.Context, pay float64) error {
 		if pay < passageCost {
 			// Barrier remains closed unless customer pays up
-			return fmt.Errorf("customer underpayed with $%.2f", pay)
+			return fmt.Errorf("customer underpaid with $%.2f", pay)
 		}
 		return nil
 	})
@@ -35,7 +35,7 @@ func main() {
 		if err != nil {
 			fmt.Println(err)
 		} else {
-			fmt.Printf("customer payed $%.2f, let them pass!\n", pay)
+			fmt.Printf("customer paid $%.2f, let them pass!\n", pay)
 			SM.FireBg(customerAdvances, 0)
 		}
 	}
