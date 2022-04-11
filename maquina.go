@@ -2,11 +2,14 @@ package maquina
 
 import (
 	"context"
-	"errors"
 )
 
 type input = any
 
+// Trigger represents the transition from one state to another.
+type Trigger string
+
+// State basic functional unit of a finite state machine.
 type State[T input] struct {
 	defaultInput T
 	label        string
@@ -16,15 +19,8 @@ type State[T input] struct {
 	reentryFuncs []triggeredFunc[T]
 }
 
-type triggeredFunc[T input] struct {
-	t Trigger
-	f FringeFunc[T]
-}
-
-type GuardClause[T input] func(ctx context.Context, input T) bool
-
-type FringeFunc[T input] func(ctx context.Context, input T)
-
+// Transition contains information regarding a triggered transition from one state
+// to another. It can represent an reentry transition.
 type Transition[T input] struct {
 	Src     *State[T]
 	Dst     *State[T]
@@ -32,7 +28,23 @@ type Transition[T input] struct {
 	guards  []GuardClause[T]
 }
 
-type Trigger string
+// GuardClause represents a condition that must be met for a state
+// transition to complete succesfully. If a GuardClause returns false
+// during a transition the transition halts and the state remains as before.
+type GuardClause[T input] func(ctx context.Context, input T) error
+
+type triggeredFunc[T input] struct {
+	t Trigger
+	f fringeFunc[T]
+}
+
+type fringeFunc[T input] func(ctx context.Context, input T)
+
+// String returns the trigger string with which it was created.
+func (t Trigger) String() string { return string(t) }
+
+// Quote returns the trigger string with which it was create enclosed in double quotes.
+func (t Trigger) Quote() string { return "\"" + t.String() + "\"" }
 
 var triggerWildcard Trigger = "*"
 
@@ -74,7 +86,7 @@ func (s *State[T]) fire(ctx context.Context, t Trigger, input T) error {
 	if transition := s.getTransition(t); transition != nil {
 		return transition.fire(ctx, t, input)
 	}
-	panic("could not find firing trigger " + string(t) + " registered with state " + s.label)
+	panic("could not find firing trigger " + t.Quote() + " registered with state " + s.label)
 }
 
 func (s *State[T]) getTransition(t Trigger) *Transition[T] {
@@ -86,20 +98,42 @@ func (s *State[T]) getTransition(t Trigger) *Transition[T] {
 	return nil
 }
 
-func (s Transition[T]) fire(ctx context.Context, t Trigger, input T) error {
-	for i := range s.guards {
-		if !s.guards[i](ctx, input) {
-			return errors.New("guard clause failed")
-		}
+type guardClauseError struct {
+	Err error
+}
+
+func (g *guardClauseError) Error() string { return "guard clause failed: " + g.Err.Error() }
+func (g *guardClauseError) Unwrap() error { return g.Err }
+
+func (tr Transition[T]) fire(ctx context.Context, t Trigger, input T) error {
+	if err := tr.isPermitted(ctx, input); err != nil {
+		return &guardClauseError{Err: err}
 	}
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	if statesEqual(s.Src, s.Dst) {
-		s.Src.reenter(ctx, t, input)
+	if statesEqual(tr.Src, tr.Dst) {
+		tr.Src.reenter(ctx, t, input)
 		return nil
 	}
-	s.Src.exit(ctx, t, input)
-	s.Dst.enter(ctx, t, input)
+	tr.Src.exit(ctx, t, input)
+	tr.Dst.enter(ctx, t, input)
 	return nil
 }
+
+func (tr Transition[T]) isPermitted(ctx context.Context, input T) error {
+	for _, guard := range tr.guards {
+		if err := guard(ctx, input); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// String returns a basic text-arrow representation of the transition.
+func (tr Transition[T]) String() string {
+	return tr.Src.label + " --" + tr.Trigger.String() + "-> " + tr.Dst.label
+}
+
+// String returns the label with which the State was initialized.
+func (s State[T]) String() string { return s.label }

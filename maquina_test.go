@@ -19,8 +19,12 @@ func ExampleStateMachine_tollBooth() {
 	tollClosed := maquina.NewState("toll barrier closed", defaultPay)
 	tollOpen := maquina.NewState("toll barrier open", defaultPay)
 
-	tollClosed.Permit(payUp, tollOpen, func(_ context.Context, pay float64) bool {
-		return pay >= passageCost // Barrier remains closed unless customer pays up
+	tollClosed.Permit(payUp, tollOpen, func(_ context.Context, pay float64) error {
+		if pay < passageCost {
+			// Barrier remains closed unless customer pays up
+			return fmt.Errorf("customer underpayed with $%.2f", pay)
+		}
+		return nil
 	})
 	tollOpen.Permit(customerAdvances, tollClosed)
 
@@ -29,7 +33,7 @@ func ExampleStateMachine_tollBooth() {
 		pay := 2 * passageCost * rand.Float64()
 		err := SM.FireBg(payUp, pay)
 		if err != nil {
-			fmt.Printf("customer payed $%.2f, not enough!\n", pay)
+			fmt.Println(err)
 		} else {
 			fmt.Printf("customer payed $%.2f, let them pass!\n", pay)
 			SM.FireBg(customerAdvances, 0)
@@ -39,6 +43,6 @@ func ExampleStateMachine_tollBooth() {
 	// customer payed $12.09, let them pass!
 	// customer payed $18.81, let them pass!
 	// customer payed $13.29, let them pass!
-	// customer payed $8.75, not enough!
-	// customer payed $8.49, not enough!
+	// guard clause failed: customer underpayed with $8.75
+	// guard clause failed: customer underpayed with $8.49
 }
