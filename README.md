@@ -6,6 +6,8 @@
 
 Create finite-state machines in Go. Inspired by [stateless](https://github.com/qmuntal/stateless).
 
+_Maquina_ is the spanish word for machine. It is pronounced maa-kee-nuh, much like _machina_ from the Latin calque [_deus-ex-machina_](https://en.wikipedia.org/wiki/Deus_ex_machina).
+
 ## Code organization
 
 * [`maquina.go`](./maquina.go) contains internal logic for the state machine such as the `fire()` functions triggered by a state transition.
@@ -40,6 +42,7 @@ Create finite-state machines in Go. Inspired by [stateless](https://github.com/q
 	SM := maquina.NewStateMachine(tollClosed)
 	for i := 0; i < 5; i++ {
 		pay := 2 * passageCost * rand.Float64()
+		// FireBg activates transition with context.Background()
 		err := SM.FireBg(payUp, pay)
 		if err != nil {
 			fmt.Println(err)
