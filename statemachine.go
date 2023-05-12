@@ -28,8 +28,8 @@ func (sm *StateMachine[T]) State() *State[T] {
 // context.Background().
 //
 // FireBg returns an error in the following cases:
-//  - A guard clause fails to validate (returns wrapped error)
-//  - OnUnhandledTrigger registered callback catches an unhandled trigger and returns an error.
+//   - A guard clause fails to validate (returns wrapped error)
+//   - OnUnhandledTrigger registered callback catches an unhandled trigger and returns an error.
 func (sm *StateMachine[T]) FireBg(t Trigger, input T) error {
 	return sm.Fire(context.Background(), t, input)
 }
@@ -37,9 +37,9 @@ func (sm *StateMachine[T]) FireBg(t Trigger, input T) error {
 // Fire fires the state transition corresponding to the trigger T.
 //
 // Fire returns an error in the following cases:
-//  - ctx.Err() != nil (cancelled context). Fire returns ctx.Err() in this case.
-//  - A guard clause fails to validate (returns wrapped error)
-//  - OnUnhandledTrigger registered callback catches an unhandled trigger and returns an error.
+//   - ctx.Err() != nil (cancelled context). Fire returns ctx.Err() in this case.
+//   - A guard clause fails to validate (returns wrapped error)
+//   - OnUnhandledTrigger registered callback catches an unhandled trigger and returns an error.
 func (sm *StateMachine[T]) Fire(ctx context.Context, t Trigger, input T) error {
 	transition := sm.actual.getTransition(t)
 	if transition == nil {
@@ -65,7 +65,7 @@ func (sm *StateMachine[T]) Fire(ctx context.Context, t Trigger, input T) error {
 }
 
 // PermittedTriggers returns triggers which are permitted for
-// the current State given input and ctx Context.
+// the current State given input and ctx Context by calling the guard clauses with input.
 // A Trigger transition is permitted if all guard clauses return true.
 func (sm *StateMachine[T]) PermittedTriggers(ctx context.Context, input T) []Trigger {
 	var permitted []Trigger

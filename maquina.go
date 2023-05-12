@@ -11,12 +11,12 @@ type Trigger string
 
 // State basic functional unit of a finite state machine.
 type State[T input] struct {
-	defaultInput T
 	label        string
 	transitions  []Transition[T]
 	exitFuncs    []triggeredFunc[T]
 	entryFuncs   []triggeredFunc[T]
 	reentryFuncs []triggeredFunc[T]
+	defaultInput T
 }
 
 // Transition contains information regarding a triggered transition from one state
@@ -27,6 +27,12 @@ type Transition[T input] struct {
 	Trigger Trigger
 	guards  []GuardClause[T]
 }
+
+// HasGuards returns true if the transition has any guard clauses.
+func (t Transition[T]) HasGuards() bool { return len(t.guards) > 0 }
+
+// IsReentry checks if the transition is a reentry transition.
+func (t Transition[T]) IsReentry() bool { return statesEqual(t.Src, t.Dst) }
 
 // GuardClause represents a condition that must be met for a state
 // transition to complete succesfully. If a GuardClause returns false
@@ -52,25 +58,25 @@ func triggersEqual(a, b Trigger) bool          { return a == b || a == triggerWi
 func statesEqual[T input](a, b *State[T]) bool { return a.label == b.label }
 
 func (s *State[T]) exit(ctx context.Context, t Trigger, input T) {
-	for _, tf := range s.exitFuncs {
-		if triggersEqual(tf.t, t) {
-			tf.f(ctx, input)
+	for i := 0; i < len(s.exitFuncs); i++ {
+		if triggersEqual(s.exitFuncs[i].t, t) {
+			s.exitFuncs[i].f(ctx, input)
 		}
 	}
 }
 
 func (s *State[T]) enter(ctx context.Context, t Trigger, input T) {
-	for _, tf := range s.entryFuncs {
-		if triggersEqual(tf.t, t) {
-			tf.f(ctx, input)
+	for i := 0; i < len(s.entryFuncs); i++ {
+		if triggersEqual(s.entryFuncs[i].t, t) {
+			s.entryFuncs[i].f(ctx, input)
 		}
 	}
 }
 
 func (s *State[T]) reenter(ctx context.Context, t Trigger, input T) {
-	for _, tf := range s.reentryFuncs {
-		if triggersEqual(tf.t, t) {
-			tf.f(ctx, input)
+	for i := 0; i < len(s.reentryFuncs); i++ {
+		if triggersEqual(s.reentryFuncs[i].t, t) {
+			s.reentryFuncs[i].f(ctx, input)
 		}
 	}
 }
@@ -86,11 +92,12 @@ func (s *State[T]) fire(ctx context.Context, t Trigger, input T) error {
 	if transition := s.getTransition(t); transition != nil {
 		return transition.fire(ctx, t, input)
 	}
+	// TODO(soypat): Document how this panic is reached, if at all possible-- if not reachable state so.
 	panic("could not find firing trigger " + t.Quote() + " registered with state " + s.label)
 }
 
 func (s *State[T]) getTransition(t Trigger) *Transition[T] {
-	for i := range s.transitions {
+	for i := 0; i < len(s.transitions); i++ {
 		if triggersEqual(t, s.transitions[i].Trigger) {
 			return &s.transitions[i]
 		}
@@ -122,8 +129,8 @@ func (tr Transition[T]) fire(ctx context.Context, t Trigger, input T) error {
 }
 
 func (tr Transition[T]) isPermitted(ctx context.Context, input T) error {
-	for _, guard := range tr.guards {
-		if err := guard(ctx, input); err != nil {
+	for i := 0; i < len(tr.guards); i++ {
+		if err := tr.guards[i](ctx, input); err != nil {
 			return err
 		}
 	}

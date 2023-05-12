@@ -99,7 +99,7 @@ func (s *State[T]) mustValidate(t Trigger) {
 	case "":
 		panic("trigger must not be empty string")
 	case triggerWildcard:
-		panic("trigger " + triggerWildcard.Quote() + " reserved for wildcard")
+		panic("trigger " + triggerWildcard.Quote() + " reserved for internal use (wildcard)")
 	}
 	existingTransition := s.getTransition(t)
 	if existingTransition != nil {
