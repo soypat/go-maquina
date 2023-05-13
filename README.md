@@ -20,37 +20,37 @@ _Maquina_ is the spanish word for machine. It is pronounced maa-kee-nuh, much li
 ## Toll booth example
 ![toolbooth diagram](https://user-images.githubusercontent.com/26156425/238150418-c223b843-ae14-4694-a40c-c6b123c43886.png)
 ```go
-	const (
-		passageCost                      = 10.00
-		defaultPay                       = 0.0
-		payUp            maquina.Trigger = "customer pays"
-		customerAdvances maquina.Trigger = "customer advances"
-	)
-
-	tollClosed := maquina.NewState("toll barrier closed", defaultPay)
-	tollOpen := maquina.NewState("toll barrier open", defaultPay)
-
-	tollClosed.Permit(payUp, tollOpen, func(_ context.Context, pay float64) error {
+const (
+	passageCost                      = 10.00
+	defaultPay                       = 0.0
+	payUp            maquina.Trigger = "customer pays"
+	customerAdvances maquina.Trigger = "customer advances"
+)
+var (
+	tollClosed = maquina.NewState("toll barrier closed", defaultPay)
+	tollOpen   = maquina.NewState("toll barrier open", defaultPay)
+	guardPay   = maquina.NewGuard("payment check", func(ctx context.Context, pay float64) error {
 		if pay < passageCost {
 			// Barrier remains closed unless customer pays up
 			return fmt.Errorf("customer underpaid with $%.2f", pay)
 		}
 		return nil
 	})
-	tollOpen.Permit(customerAdvances, tollClosed)
+)
 
-	SM := maquina.NewStateMachine(tollClosed)
-	for i := 0; i < 5; i++ {
-		pay := 2 * passageCost * rand.Float64()
-		// FireBg activates transition with context.Background()
-		err := SM.FireBg(payUp, pay)
-		if err != nil {
-			fmt.Println(err)
-		} else {
-			fmt.Printf("customer paid $%.2f, let them pass!\n", pay)
-			SM.FireBg(customerAdvances, 0)
-		}
+tollClosed.Permit(payUp, tollOpen, guardPay)
+tollOpen.Permit(customerAdvances, tollClosed)
+SM := maquina.NewStateMachine(tollClosed)
+for i := 0; i < 5; i++ {
+	pay := 2 * passageCost * rand.Float64()
+	err := SM.FireBg(payUp, pay)
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		fmt.Printf("customer paid $%.2f, let them pass!\n", pay)
+		SM.FireBg(customerAdvances, 0)
 	}
+}
 ```
 The code above outputs:
 
