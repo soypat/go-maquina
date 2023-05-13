@@ -123,7 +123,7 @@ fmt.Println(buf.String())
 
 ## Hyper connected state diagram
 A toy example of 8 states, all of them connected to illustrate capabilities of go-maquina when coupled to graphviz (code is below):
-![hyper-states](https://github.com/soypat/go-maquina/assets/26156425/1f463a93-e440-416f-b7d2-ec0910622d86)
+![hyper-states](https://user-images.githubusercontent.com/26156425/238158584-b178ecce-ea0c-4a8b-987b-5e4cc7986ad8.png)
 
 ```go
 const n = 8
@@ -141,9 +141,10 @@ for i := 0; i < n; i++ {
 		hyperStates[i].Permit(trigger, &hyperStates[j])
 	}
 }
-
-failsafeState := maquina.NewState("failsafe", -1)
-sm := maquina.NewStateMachine(&hyperStates[0])
+sourceState := maquina.NewState("source", 0)
+sourceState.Permit("goto S0", &hyperStates[0])
+failsafeState := maquina.NewState("sink failsafe", -1)
+sm := maquina.NewStateMachine(sourceState)
 sm.AlwaysPermit("goto failsafe", failsafeState)
 var buf bytes.Buffer
 maquina.WriteDOT(&buf, sm)

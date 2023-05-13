@@ -76,6 +76,15 @@ func (s *State[T]) hasTransition(t Trigger) bool {
 	return false
 }
 
+func (s *State[T]) isSink() bool {
+	for i := 0; i < len(s.transitions); i++ {
+		if !statesEqual(s, s.transitions[i].Dst) {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *State[T]) onExitInternal(t Trigger, f fringeFunc[T]) {
 	if f == nil {
 		panic("onExit function cannot be nil")

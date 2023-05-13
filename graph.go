@@ -10,49 +10,47 @@ import (
 // It uses ForEachTransition to traverse the state machine starting
 // at the start state.
 func WriteDOT[T input](w io.Writer, sm *StateMachine[T]) (n int, err error) {
-	// always := make(map[string]*Transition[T])
-	// for i := 0; i < len(start.alwaysPermitted); i++ {
-	// 	always[start.alwaysPermitted[i].Trigger.String()] = &start.alwaysPermitted[i]
-	// }
 	ngot, err := w.Write([]byte("digraph {\n  rankdir=LR;\n  node [shape = box];\n  graph [ dpi = 300 ];\n"))
 	n += ngot
 	if err != nil {
 		return n, err
 	}
+	isSource := true
+	err = WalkStates(sm.actual, func(s *State[T]) error {
+		if s.isSink() {
+			ngot, err = fmt.Fprintf(w, "  %q [ color = red ]\n", s.label)
+			n += ngot
+			if err != nil {
+				return err
+			}
+		}
 
-	err = walkTransitions(sm.actual, func(tr Transition[T]) error {
-		ngot, err = writeDOTentry(w, tr)
-		n += ngot
-		if err != nil {
-			return err
+		for i := 0; i < len(s.transitions); i++ {
+			tr := s.transitions[i]
+			ngot, err = writeDOTentry(w, tr)
+			n += ngot
+			if err != nil {
+				return err
+			}
+			if isSource && statesEqual(sm.actual, tr.Dst) {
+				isSource = false
+			}
 		}
 		return nil
 	})
 	if err != nil {
 		return n, err
 	}
+	if isSource {
+		ngot, err = fmt.Fprintf(w, "  %q [ color = blue ]\n", sm.actual.label)
+		n += ngot
+	}
+	if err != nil {
+		return n, err
+	}
 	ngot, err = w.Write([]byte("}\n"))
 	n += ngot
 	return n, err
-	// for s := range states {
-	// 	for i := range sm.alwaysPermitted {
-	// 		if s.hasTransition(sm.alwaysPermitted[i].Trigger) {
-	// 			break
-	// 		}
-	// 		if i == len(sm.alwaysPermitted)-1 {
-	// 			// Copy transition to avoid modifying the original with source state.
-	// 			transition := sm.alwaysPermitted[i]
-	// 			transition.Src = s
-	// 			// Write always permitted transitions if not existing in state.
-	// 			ngot, err = writeDOTentry(w, transition)
-	// 			n += ngot
-	// 			if err != nil {
-	// 				return n, err
-	// 			}
-	// 		}
-	// 	}
-	// }
-
 }
 
 func writeDOTentry[T input](w io.Writer, tr Transition[T]) (int, error) {
