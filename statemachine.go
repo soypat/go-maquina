@@ -1,12 +1,16 @@
 package maquina
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 // StateMachine handles state transitioning control flow. Is not yet concurrency safe.
 type StateMachine[T input] struct {
 	// will be used in future for concurrency enabling features
 	fireOp             uint64
 	actual             *State[T]
+	alwaysPermitted    []Transition[T]
 	onUnhandledTrigger func(s *State[T], t Trigger) error
 	onTransitioning    func(tr Transition[T])
 	onTransitioned     func(tr Transition[T])
@@ -14,6 +18,9 @@ type StateMachine[T input] struct {
 
 // NewStateMachine returns a StateMachine with initial State s.
 func NewStateMachine[T input](s *State[T]) *StateMachine[T] {
+	if s == nil {
+		panic("nil initial state")
+	}
 	return &StateMachine[T]{
 		actual: s,
 	}
@@ -41,7 +48,18 @@ func (sm *StateMachine[T]) FireBg(t Trigger, input T) error {
 //   - A guard clause fails to validate (returns wrapped error)
 //   - OnUnhandledTrigger registered callback catches an unhandled trigger and returns an error.
 func (sm *StateMachine[T]) Fire(ctx context.Context, t Trigger, input T) error {
+	if t == triggerWildcard {
+		panic("cannot fire wildcard trigger") // Panic since this would imply a bug in the code.
+	}
 	transition := sm.actual.getTransition(t)
+	if transition == nil {
+		// check if the trigger is always permitted
+		for i := 0; i < len(sm.alwaysPermitted); i++ {
+			if t == sm.alwaysPermitted[i].Trigger {
+				transition = &sm.alwaysPermitted[i]
+			}
+		}
+	}
 	if transition == nil {
 		if sm.onUnhandledTrigger != nil {
 			return sm.onUnhandledTrigger(sm.actual, t)
@@ -87,18 +105,57 @@ func (sm *StateMachine[T]) AvailableTriggers() []Trigger {
 	return available
 }
 
-// OnUnhandledTrigger registeres a callback for when a trigger with no transition is encountered for the
-// StateMachine's current state.
+// OnUnhandledTrigger registeres the callback for when a trigger with no
+// transition is encountered for the StateMachine's current state.
+// It replaces the callback set by a previous call to OnUnhandledTrigger.
 func (sm *StateMachine[T]) OnUnhandledTrigger(f func(current *State[T], t Trigger) error) {
 	sm.onUnhandledTrigger = f
 }
 
-// OnTransitioning registers a callback which is invoked when transitioning commences.
+// OnTransitioning registers the callback which is invoked when transitioning commences.
+// It replaces the callback set by a previous call to OnTransitioning.
 func (sm *StateMachine[T]) OnTransitioning(f func(s Transition[T])) {
 	sm.onTransitioning = f
 }
 
-// OnTransitioned registers a callback which is invoked when transition finalizes.
+// OnTransitioned registers the callback which is invoked when transition finalizes.
+// It replaces the callback set by a previous call to OnTransitioned.
 func (sm *StateMachine[T]) OnTransitioned(f func(s Transition[T])) {
 	sm.onTransitioned = f
+}
+
+var errExitWalk = errors.New("exit walk")
+
+// AlwaysPermit registers a trigger which is always permitted for the current state.
+// Triggers set on a state take precedence over an always permitted trigger.
+// It panics if trigger is the wildcard trigger or if dst is nil.
+func (sm *StateMachine[T]) AlwaysPermit(trigger Trigger, dst *State[T], guards ...GuardClause[T]) {
+	if trigger == triggerWildcard {
+		panic(errTriggerWildcardNotAllowed)
+	} else if dst == nil {
+		panic("nil destination state")
+	}
+	transition := Transition[T]{
+		Trigger: trigger,
+		Dst:     dst,
+		guards:  guards,
+	}
+	// To maintain consistency of our state machine and ensure that the dst
+	// state is reachable within the state tree, we add the always permitted
+	// transition to a state in our tree without the transition.
+	walkStateTransitions(sm.actual, func(tr Transition[T]) (err error) {
+		if !tr.Src.hasTransition(trigger) {
+			transitionWithSrc := transition
+			transitionWithSrc.Src = tr.Src
+			tr.Src.transitions = append(tr.Src.transitions, transitionWithSrc)
+			err = errExitWalk
+		} else if !tr.Dst.hasTransition(trigger) {
+			transitionWithSrc := transition
+			transitionWithSrc.Src = tr.Dst
+			tr.Dst.transitions = append(tr.Dst.transitions, transitionWithSrc)
+			err = errExitWalk
+		}
+		return err
+	})
+	sm.alwaysPermitted = append(sm.alwaysPermitted, transition)
 }

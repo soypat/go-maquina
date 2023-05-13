@@ -1,6 +1,9 @@
 package maquina
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 // NewState instantiates a state with a label for tracking and tracing.
 // The type parameter T will be the argument received by entry, exit,
@@ -64,6 +67,15 @@ func (s *State[T]) OnReentryFrom(t Trigger, f func(ctx context.Context, input T)
 	s.onReentryInternal(t, f)
 }
 
+func (s *State[T]) hasTransition(t Trigger) bool {
+	for i := 0; i < len(s.transitions); i++ {
+		if s.transitions[i].Trigger == t {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *State[T]) onExitInternal(t Trigger, f fringeFunc[T]) {
 	if f == nil {
 		panic("onExit function cannot be nil")
@@ -94,12 +106,14 @@ func (s *State[T]) onEntryInternal(t Trigger, f fringeFunc[T]) {
 	})
 }
 
+var errTriggerWildcardNotAllowed = errors.New("trigger " + triggerWildcard.Quote() + " reserved for internal use (wildcard)")
+
 func (s *State[T]) mustValidate(t Trigger) {
 	switch t {
 	case "":
 		panic("trigger must not be empty string")
 	case triggerWildcard:
-		panic("trigger " + triggerWildcard.Quote() + " reserved for internal use (wildcard)")
+		panic(errTriggerWildcardNotAllowed)
 	}
 	existingTransition := s.getTransition(t)
 	if existingTransition != nil {

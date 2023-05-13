@@ -61,3 +61,65 @@ customer paid $13.29, let them pass!
 guard clause failed: customer underpaid with $8.75
 guard clause failed: customer underpaid with $8.49
 ```
+
+## 3D Printer graphviz example
+
+```go
+type printerState struct {
+	x, y, z int
+}
+// Declaration of triggers. These are actions.
+// In the example of a 3D printer one could think of them
+// as buttons exposed to the end user.
+const (
+	trigHome      maquina.Trigger = "home"
+	trigCalibrate maquina.Trigger = "calibrate"
+	trigStop      maquina.Trigger = "stop"
+)
+var (
+	// stateSingleton contains the state of the printer at all times.
+	// It is a singleton and is shared by all states.
+	stateSingleton   = &printerState{}
+	stateIdleHome    = maquina.NewState("idle at home", stateSingleton)
+	stateIdle        = maquina.NewState("idle", stateSingleton)
+	stateCalibrating = maquina.NewState("calibrating", stateSingleton)
+	stateGoingHome   = maquina.NewState("going home", stateSingleton)
+	// guardNotAtHome is a guard clause that checks if the printer is at home position.
+	guardNotAtHome = maquina.NewGuard("not at home", func(ctx context.Context, state *printerState) error {
+		if state.x != 0 || state.y != 0 || state.z != 0 {
+			return fmt.Errorf("not at home")
+		}
+		return nil
+	})
+)
+// Declare Calibration and Stop transitions. These would be the actions taken
+// when user presses CALIBRATE or STOP button.
+stateIdleHome.Permit(trigCalibrate, stateCalibrating)
+stateIdle.Permit(trigCalibrate, stateCalibrating, guardNotAtHome)
+// Special case of STOP while home: we stay at home.
+stateIdleHome.Permit(trigStop, stateIdleHome)
+
+// Declare home transitions. These would be the actions taken when a user presses
+// the HOME button, as an example.
+stateCalibrating.Permit(trigHome, stateGoingHome)
+stateIdle.Permit(trigHome, stateGoingHome)
+stateGoingHome.Permit(trigHome, stateIdleHome, guardNotAtHome)
+sm := maquina.NewStateMachine(stateIdleHome)
+// In the case of stopping we go to Idle state since we are not
+// guaranteed to be at home position.
+sm.AlwaysPermit(trigStop, stateIdle)
+var buf bytes.Buffer
+maquina.WriteDOT(&buf, sm)
+fmt.Println(buf.String())
+// With the code below one can also output a PNG file with the graph:
+// One must have graphviz installed and in the path: `sudo apt install graphviz`
+//
+//  cmd := exec.Command("dot", "-Tpng", "-o ", "3dprinter.png")
+//  cmd.Stdin = &buf
+//  cmd.Run()
+```
+
+The code above outputs the following DOT graph code:
+
+![3d printer example](https://user-images.githubusercontent.com/26156425/238145938-6cf54057-ae07-4b47-ad54-d3997032d540.png)
+
