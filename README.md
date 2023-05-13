@@ -121,3 +121,33 @@ fmt.Println(buf.String())
 //  cmd.Run()
 ```
 
+## Hyper connected state diagram
+A toy example of 8 states, all of them connected to illustrate capabilities of go-maquina when coupled to graphviz (code is below):
+![hyper-states](https://github.com/soypat/go-maquina/assets/26156425/1f463a93-e440-416f-b7d2-ec0910622d86)
+
+```go
+const n = 8
+hyperStates := make([]maquina.State[int], n)
+for i := 0; i < n; i++ {
+	hyperStates[i] = *maquina.NewState("S"+strconv.Itoa(i), i)
+	for j := i - 1; j >= 0; j-- {
+		trigger := maquina.Trigger("T" + strconv.Itoa(i) + "→" + strconv.Itoa(j))
+		hyperStates[i].Permit(trigger, &hyperStates[j])
+	}
+}
+for i := 0; i < n; i++ {
+	for j := i + 1; j < n; j++ {
+		trigger := maquina.Trigger("T" + strconv.Itoa(i) + "→" + strconv.Itoa(j))
+		hyperStates[i].Permit(trigger, &hyperStates[j])
+	}
+}
+
+failsafeState := maquina.NewState("failsafe", -1)
+sm := maquina.NewStateMachine(&hyperStates[0])
+sm.AlwaysPermit("goto failsafe", failsafeState)
+var buf bytes.Buffer
+maquina.WriteDOT(&buf, sm)
+cmd := exec.Command("dot", "-Tpng", "-o", "hyper-states.png")
+cmd.Stdin = &buf
+cmd.Run()
+```
