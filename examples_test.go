@@ -91,6 +91,7 @@ func ExampleToDOT_3dPrinter() {
 	stateIdle.Permit(trigHome, stateGoingHome)
 	stateGoingHome.Permit(trigHome, stateIdleHome, guardNotAtHome)
 	sm := maquina.NewStateMachine(stateIdleHome)
+
 	// In the case of stopping we go to Idle state since we are not
 	// guaranteed to be at home position.
 	sm.AlwaysPermit(trigStop, stateIdle)

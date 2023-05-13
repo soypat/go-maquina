@@ -10,7 +10,6 @@ type StateMachine[T input] struct {
 	// will be used in future for concurrency enabling features
 	fireOp             uint64
 	actual             *State[T]
-	alwaysPermitted    []Transition[T]
 	onUnhandledTrigger func(s *State[T], t Trigger) error
 	onTransitioning    func(tr Transition[T])
 	onTransitioned     func(tr Transition[T])
@@ -53,14 +52,6 @@ func (sm *StateMachine[T]) Fire(ctx context.Context, t Trigger, input T) error {
 	}
 	transition := sm.actual.getTransition(t)
 	if transition == nil {
-		// check if the trigger is always permitted
-		for i := 0; i < len(sm.alwaysPermitted); i++ {
-			if t == sm.alwaysPermitted[i].Trigger {
-				transition = &sm.alwaysPermitted[i]
-			}
-		}
-	}
-	if transition == nil {
 		if sm.onUnhandledTrigger != nil {
 			return sm.onUnhandledTrigger(sm.actual, t)
 		}
@@ -69,7 +60,7 @@ func (sm *StateMachine[T]) Fire(ctx context.Context, t Trigger, input T) error {
 	if sm.onTransitioning != nil {
 		sm.onTransitioning(*transition)
 	}
-	err := sm.actual.fire(ctx, t, input)
+	err := fire(ctx, transition, input)
 	if err != nil {
 		// an error here usually means a guard clause did not validate.
 		// or context.Context was cancelled (ctx.Err() != nil)
@@ -140,22 +131,19 @@ func (sm *StateMachine[T]) AlwaysPermit(trigger Trigger, dst *State[T], guards .
 		Dst:     dst,
 		guards:  guards,
 	}
-	// To maintain consistency of our state machine and ensure that the dst
-	// state is reachable within the state tree, we add the always permitted
-	// transition to a state in our tree without the transition.
-	walkStateTransitions(sm.actual, func(tr Transition[T]) (err error) {
-		if !tr.Src.hasTransition(trigger) {
+	// To maintain consistency of our state machine we add the always permitted
+	// transition to all states in our tree without the transition.
+	WalkStates(sm.actual, func(s *State[T]) (err error) {
+		if !s.hasTransition(trigger) {
 			transitionWithSrc := transition
-			transitionWithSrc.Src = tr.Src
-			tr.Src.transitions = append(tr.Src.transitions, transitionWithSrc)
-			err = errExitWalk
-		} else if !tr.Dst.hasTransition(trigger) {
-			transitionWithSrc := transition
-			transitionWithSrc.Src = tr.Dst
-			tr.Dst.transitions = append(tr.Dst.transitions, transitionWithSrc)
-			err = errExitWalk
+			transitionWithSrc.Src = s
+			s.transitions = append(s.transitions, transitionWithSrc)
 		}
-		return err
+		return nil
 	})
-	sm.alwaysPermitted = append(sm.alwaysPermitted, transition)
+	// add the transition to the destination state if it does not already have it.
+	if !dst.hasTransition(trigger) {
+		transition.Src = dst
+		dst.transitions = append(dst.transitions, transition)
+	}
 }

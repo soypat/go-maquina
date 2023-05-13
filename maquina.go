@@ -113,12 +113,20 @@ func (s *State[T]) reenter(ctx context.Context, t Trigger, input T) {
 // or entry function was run and encountered an error since this would
 // leave the state machine in an undefined state. Guard clauses should
 // prevent this from happening.
-func (s *State[T]) fire(ctx context.Context, t Trigger, input T) error {
-	if transition := s.getTransition(t); transition != nil {
-		return transition.fire(ctx, t, input)
+func fire[T input](ctx context.Context, tr *Transition[T], input T) error {
+	if err := tr.isPermitted(ctx, input); err != nil {
+		return err
 	}
-	// TODO(soypat): Document how this panic is reached, if at all possible-- if not reachable state so.
-	panic("could not find firing trigger " + t.Quote() + " registered with state " + s.label)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if statesEqual(tr.Src, tr.Dst) {
+		tr.Src.reenter(ctx, tr.Trigger, input)
+		return nil
+	}
+	tr.Src.exit(ctx, tr.Trigger, input)
+	tr.Dst.enter(ctx, tr.Trigger, input)
+	return nil
 }
 
 func (s *State[T]) getTransition(t Trigger) *Transition[T] {
@@ -140,22 +148,6 @@ func (g *guardClauseError) Error() string {
 }
 func (g *guardClauseError) Unwrap() error { return g.Err }
 
-func (tr Transition[T]) fire(ctx context.Context, t Trigger, input T) error {
-	if err := tr.isPermitted(ctx, input); err != nil {
-		return err
-	}
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	if statesEqual(tr.Src, tr.Dst) {
-		tr.Src.reenter(ctx, t, input)
-		return nil
-	}
-	tr.Src.exit(ctx, t, input)
-	tr.Dst.enter(ctx, t, input)
-	return nil
-}
-
 func (tr Transition[T]) isPermitted(ctx context.Context, input T) error {
 	for i := 0; i < len(tr.guards); i++ {
 		if err := tr.guards[i].guard(ctx, input); err != nil {
@@ -167,41 +159,75 @@ func (tr Transition[T]) isPermitted(ctx context.Context, input T) error {
 
 // String returns a basic text-arrow representation of the transition.
 func (tr Transition[T]) String() string {
-	return tr.Src.label + " --" + tr.Trigger.String() + "-> " + tr.Dst.label
+	str := tr.Src.label + " --" + tr.Trigger.String() + "-> " + tr.Dst.label
+	for i := 0; i < len(tr.guards); i++ {
+		str += " [" + tr.guards[i].String() + "] "
+	}
+	return str
 }
 
 // String returns the label with which the State was initialized.
-func (s State[T]) String() string { return s.label }
+func (s State[T]) String() (str string) {
+	str += s.label + ":\n"
+	for i := 0; i < len(s.transitions); i++ {
+		str += "\t" + s.transitions[i].String() + "\n"
+	}
+	return str
+}
 
-// walkStateTransitions recurses down the state tree in a breadth first search for
-// all transitions in what would be a state machine starting with the argument state.
-// It calls fn on every transition it finds. If fn returns an error, the walk is aborted
+// WalkStates recurses down the state tree in a depth first search for
+// all unique states in what would be a state machine starting with the argument state.
+// It calls fn on every new state it finds. If fn returns an error, the walk is aborted
 // and the error is returned.
-func walkStateTransitions[T input](start *State[T], fn func(tr Transition[T]) error) error {
+func WalkStates[T input](start *State[T], fn func(s *State[T]) error) error {
 	if start == nil {
 		return errors.New("start state is nil")
 	}
 	visited := make(map[string]struct{})
-	return walkTransitions(start, fn, visited)
+	// Special case for first state.
+	visited[start.label] = struct{}{} // Mark as visited.
+	err := fn(start)
+	if err != nil {
+		return err
+	}
+	return walkStatesInternal(start, fn, visited)
 }
 
-func walkTransitions[T input](src *State[T], fn func(tr Transition[T]) error, visited map[string]struct{}) error {
-	if _, ok := visited[src.label]; ok {
-		return nil
-	}
-	visited[src.label] = struct{}{}
+func walkStatesInternal[T input](src *State[T], fn func(s *State[T]) error, visited map[string]struct{}) error {
+	var toVisit []*State[T]
 	for i := 0; i < len(src.transitions); i++ {
 		if !statesEqual(src, src.transitions[i].Src) {
-			panic("state's transition source not match self: " + src.String() + " != " + src.transitions[i].Src.String())
+			panic("state's transition source \"" + src.String() + "\" not match transition source: " + src.transitions[i].String())
 		}
-		err := fn(src.transitions[i])
+		dst := src.transitions[i].Dst
+		if _, ok := visited[dst.label]; ok {
+			continue // Already visited.
+		}
+		visited[dst.label] = struct{}{} // Mark as visited.
+		err := fn(dst)
 		if err != nil {
 			return err
 		}
-		err = walkTransitions(src.transitions[i].Dst, fn, visited)
-		if err != nil {
+		toVisit = append(toVisit, dst)
+	}
+	for i := 0; i < len(toVisit); i++ {
+		if err := walkStatesInternal(toVisit[i], fn, visited); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func walkTransitions[T input](start *State[T], fn func(s Transition[T]) error) error {
+	if start == nil {
+		return errors.New("start state is nil")
+	}
+	return WalkStates(start, func(s *State[T]) error {
+		for i := 0; i < len(s.transitions); i++ {
+			if err := fn(s.transitions[i]); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
