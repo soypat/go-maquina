@@ -18,7 +18,7 @@ _Maquina_ is the spanish word for machine. It is pronounced maa-kee-nuh, much li
 
 
 ## Toll booth example
-
+![toolbooth diagram](https://user-images.githubusercontent.com/26156425/238150418-c223b843-ae14-4694-a40c-c6b123c43886.png)
 ```go
 	const (
 		passageCost                      = 10.00
@@ -63,6 +63,8 @@ guard clause failed: customer underpaid with $8.49
 ```
 
 ## 3D Printer graphviz example
+The code below outputs the following DOT graph code:
+![3d printer example](https://user-images.githubusercontent.com/26156425/238145938-6cf54057-ae07-4b47-ad54-d3997032d540.png)
 
 ```go
 type printerState struct {
@@ -118,8 +120,4 @@ fmt.Println(buf.String())
 //  cmd.Stdin = &buf
 //  cmd.Run()
 ```
-
-The code above outputs the following DOT graph code:
-
-![3d printer example](https://user-images.githubusercontent.com/26156425/238145938-6cf54057-ae07-4b47-ad54-d3997032d540.png)
 
