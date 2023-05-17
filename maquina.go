@@ -45,6 +45,11 @@ func (gc GuardClause[T]) String() string { return gc.label }
 
 // NewGuard instantiates a new GuardClause with a label and a guard function.
 func NewGuard[T input](label string, guard func(ctx context.Context, input T) error) GuardClause[T] {
+	if guard == nil {
+		panic("nil guard clause callback")
+	} else if label == "" {
+		panic("empty guard clause label")
+	}
 	return GuardClause[T]{label: label, guard: guard}
 }
 
@@ -65,7 +70,7 @@ func (t Trigger) Quote() string { return "\"" + t.String() + "\"" }
 // comparisons to check if a callback should be run. These include exit, reentry
 // and entry callbacks. Wildcards are set internally by go-maquina for callbacks
 // which should always run regardless of the transition.
-var triggerWildcard Trigger = "*"
+const triggerWildcard Trigger = "*"
 
 // triggersEqual checks if a trigger is equal to another trigger or the wildcard.
 // Should only be used for checking if a callback should be run.

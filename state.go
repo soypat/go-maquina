@@ -36,7 +36,10 @@ func NewState[T input](label string, _ T) *State[T] {
 // false the state transition is aborted and the Fire() attempt by the state machine
 // returns an error.
 func (s *State[T]) Permit(t Trigger, dst *State[T], guards ...GuardClause[T]) {
-	s.mustValidate(t)
+	if dst == nil {
+		panic("nil destination state")
+	}
+	s.mustValidateAndNotExist(t)
 	s.transitions = append(s.transitions, Transition[T]{
 		Src: s, Dst: dst, Trigger: t, guards: guards,
 	})
@@ -130,15 +133,19 @@ func (s *State[T]) onEntryInternal(t Trigger, f fringeFunc[T]) {
 
 var errTriggerWildcardNotAllowed = errors.New("trigger " + triggerWildcard.Quote() + " reserved for internal use (wildcard)")
 
+func (s *State[T]) mustValidateAndNotExist(t Trigger) {
+	s.mustValidate(t)
+	existingTransition := s.getTransition(t)
+	if existingTransition != nil {
+		panic("trigger " + t.Quote() + " already registed as transition: " + existingTransition.String())
+	}
+}
+
 func (s *State[T]) mustValidate(t Trigger) {
 	switch t {
 	case "":
 		panic("trigger must not be empty string")
 	case triggerWildcard:
 		panic(errTriggerWildcardNotAllowed)
-	}
-	existingTransition := s.getTransition(t)
-	if existingTransition != nil {
-		panic("trigger " + t.Quote() + " already registed as transition: " + existingTransition.String())
 	}
 }
