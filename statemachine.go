@@ -2,13 +2,12 @@ package maquina
 
 import (
 	"context"
-	"errors"
 )
 
-// StateMachine handles state transitioning control flow. Is not yet concurrency safe.
+// StateMachine handles state transitioning control flow. Is not yet concurrency safe
+// nor may it ever be concurrent safe since this would probably be implemented in
+// a type that embeds StateMachine.
 type StateMachine[T input] struct {
-	// will be used in future for concurrency enabling features
-	fireOp             uint64
 	actual             *State[T]
 	onUnhandledTrigger func(s *State[T], t Trigger) error
 	onTransitioning    func(tr Transition[T])
@@ -44,7 +43,7 @@ func (sm *StateMachine[T]) FireBg(t Trigger, input T) error {
 //
 // Fire returns an error in the following cases:
 //   - ctx.Err() != nil (cancelled context). Fire returns ctx.Err() in this case.
-//   - A guard clause fails to validate (returns wrapped error)
+//   - A guard clause fails to validate (returns GuardClauseError).
 //   - OnUnhandledTrigger registered callback catches an unhandled trigger and returns an error.
 func (sm *StateMachine[T]) Fire(ctx context.Context, t Trigger, input T) error {
 	if t == triggerWildcard {
@@ -114,8 +113,6 @@ func (sm *StateMachine[T]) OnTransitioning(f func(s Transition[T])) {
 func (sm *StateMachine[T]) OnTransitioned(f func(s Transition[T])) {
 	sm.onTransitioned = f
 }
-
-var errExitWalk = errors.New("exit walk")
 
 // AlwaysPermit registers a trigger which is always permitted for the current state.
 // Triggers set on a state take precedence over an always permitted trigger.

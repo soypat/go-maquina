@@ -2,6 +2,7 @@ package maquina
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -84,6 +85,24 @@ func TestWalkStates(t *testing.T) {
 	}
 	// sm := NewStateMachine(states[0])
 	// makeDOT("hyper", sm)
+}
+
+func TestGuardClauseError(t *testing.T) {
+	var guardError = errors.New("guard error")
+	state1 := NewState("state1", 1)
+	state2 := NewState("state2", 2)
+	state1.Permit("trigger", state2, NewGuard("always fail", func(_ context.Context, _ int) error {
+		return guardError
+	}))
+	sm := NewStateMachine(state1)
+	err := sm.FireBg("trigger", 1)
+	if !errors.Is(err, guardError) {
+		t.Errorf("expected guard error, got %v", err)
+	}
+	var g *GuardClauseError
+	if !errors.As(err, &g) {
+		t.Errorf("expected guard clause error, got %T", err)
+	}
 }
 
 func hyperStates(n int) []*State[int] {

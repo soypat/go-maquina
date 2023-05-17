@@ -12,16 +12,6 @@ type input = any
 // Trigger represents the transition from one state to another.
 type Trigger string
 
-// State basic functional unit of a finite state machine.
-type State[T input] struct {
-	label        string
-	transitions  []Transition[T]
-	exitFuncs    []triggeredFunc[T]
-	entryFuncs   []triggeredFunc[T]
-	reentryFuncs []triggeredFunc[T]
-	defaultInput T
-}
-
 // Transition contains information regarding a triggered transition from one state
 // to another. It can represent an reentry transition.
 type Transition[T input] struct {
@@ -43,7 +33,7 @@ func (t Transition[T]) Guards() []GuardClause[T] {
 }
 
 // GuardClause represents a condition that must be met for a state
-// transition to complete succesfully. If a GuardClause returns false
+// transition to complete succesfully. If a GuardClause returns an error
 // during a transition the transition halts and the state remains as before.
 type GuardClause[T input] struct {
 	label string
@@ -138,20 +128,43 @@ func (s *State[T]) getTransition(t Trigger) *Transition[T] {
 	return nil
 }
 
-type guardClauseError struct {
+// GuardClauseError is a auxiliary type used to wrap errors returned by guard clauses
+// so that users may check for them specifically after a call to Fire methods on
+// a state machine:
+//
+//	err := sm.FireBg(trigger, input)
+//	var g *GuardClauseError
+//	if errors.As(err, &g) {
+//		fmt.Println("guard label:", g.Label, "failed with error:", g.Unwrap())
+//	}
+//
+// GuardClauseError also implements the Unwrap method so that users may access the
+// original error returned by the guard clause or check for specific errors returned:
+//
+//	err := sm.FireBg(trigger, input)
+//	if errors.Is(err, ErrFoo) {
+//	  // handle ErrFoo
+//	}
+type GuardClauseError struct {
+	// The guard clause label.
 	Label string
-	Err   error
+	// The error as returned by the guard clause.
+	err error
 }
 
-func (g *guardClauseError) Error() string {
-	return "guard clause \"" + g.Label + "\" failed: " + g.Err.Error()
+// Error returns a string representation of the error encountered by a guard clause
+// and the guard clause label.
+func (g GuardClauseError) Error() string {
+	return "guard clause \"" + g.Label + "\" failed: " + g.err.Error()
 }
-func (g *guardClauseError) Unwrap() error { return g.Err }
+
+// Unwrap returns the error encountered by a guard as returned by the GuardClause.
+func (g GuardClauseError) Unwrap() error { return g.err }
 
 func (tr Transition[T]) isPermitted(ctx context.Context, input T) error {
 	for i := 0; i < len(tr.guards); i++ {
 		if err := tr.guards[i].guard(ctx, input); err != nil {
-			return &guardClauseError{Err: err, Label: tr.guards[i].label}
+			return &GuardClauseError{err: err, Label: tr.guards[i].label}
 		}
 	}
 	return nil
@@ -161,12 +174,13 @@ func (tr Transition[T]) isPermitted(ctx context.Context, input T) error {
 func (tr Transition[T]) String() string {
 	str := tr.Src.label + " --" + tr.Trigger.String() + "-> " + tr.Dst.label
 	for i := 0; i < len(tr.guards); i++ {
-		str += " [" + tr.guards[i].String() + "] "
+		str += " [" + tr.guards[i].String() + "]"
 	}
 	return str
 }
 
-// String returns the label with which the State was initialized.
+// String returns a pretty-printed representation of the state and its transitions
+// separated by newlines.
 func (s State[T]) String() (str string) {
 	str += s.label + ":\n"
 	for i := 0; i < len(s.transitions); i++ {
@@ -179,6 +193,9 @@ func (s State[T]) String() (str string) {
 // all unique states in what would be a state machine starting with the argument state.
 // It calls fn on every new state it finds. If fn returns an error, the walk is aborted
 // and the error is returned.
+//
+// Beware that this function provides a view into the state machine's transitions
+// and modifying them willy-nilly can cause undefined behavior.
 func WalkStates[T input](start *State[T], fn func(s *State[T]) error) error {
 	if start == nil {
 		return errors.New("start state is nil")
@@ -216,18 +233,4 @@ func walkStatesInternal[T input](src *State[T], fn func(s *State[T]) error, visi
 		}
 	}
 	return nil
-}
-
-func walkTransitions[T input](start *State[T], fn func(s Transition[T]) error) error {
-	if start == nil {
-		return errors.New("start state is nil")
-	}
-	return WalkStates(start, func(s *State[T]) error {
-		for i := 0; i < len(s.transitions); i++ {
-			if err := fn(s.transitions[i]); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
 }

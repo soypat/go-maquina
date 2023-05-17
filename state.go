@@ -5,12 +5,24 @@ import (
 	"errors"
 )
 
+// State basic functional unit of a finite state machine.
+// The T type parameter is the type of the input argument received by
+// entry, exit, reentry and guard clause callbacks during state transitions.
+type State[T input] struct {
+	label        string
+	transitions  []Transition[T]
+	exitFuncs    []triggeredFunc[T]
+	entryFuncs   []triggeredFunc[T]
+	reentryFuncs []triggeredFunc[T]
+}
+
 // NewState instantiates a state with a label for tracking and tracing.
 // The type parameter T will be the argument received by entry, exit,
 // reentry and guard clause callbacks during state transitions.
-//
-// defaultInput is still unused.
-func NewState[T input](label string, defaultInput T) *State[T] {
+func NewState[T input](label string, _ T) *State[T] {
+	// input T // TODO(soypat): Should this be implemented someday? Ideas:
+	// - Add a method called FireDefault to statemachine that uses this input
+	// - Use this for fuzzing a StateMachine as a starting seed input?
 	if label == "" {
 		panic("label cannot be empty")
 	}
@@ -76,6 +88,7 @@ func (s *State[T]) hasTransition(t Trigger) bool {
 	return false
 }
 
+// isSink returns true if the state has no outgoing transitions.
 func (s *State[T]) isSink() bool {
 	for i := 0; i < len(s.transitions); i++ {
 		if !statesEqual(s, s.transitions[i].Dst) {

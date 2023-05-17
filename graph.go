@@ -7,8 +7,19 @@ import (
 
 // WriteDOT writes the DOT representation of the state machine to w,
 // DOT being the graph description language used by Graphviz.
-// It uses ForEachTransition to traverse the state machine starting
-// at the start state.
+// See http://www.graphviz.org/ for more information.
+//
+// A few things to note about the output:
+//   - States are shown as boxes with their label as name.
+//   - Transitions are shown as arrows from the source state to the destination state
+//     labelled with the trigger.
+//   - Transitions with guards are shown as dashed arrows and their guards are
+//     listed below the transition trigger label surrounded by square brackets.
+//   - States with only exiting transitions are shown in blue ("sources" in graph theory).
+//     Due to internal state representation only the state machine's start state can be a source.
+//     These states once left cannot be re-entered.
+//   - States with only entering transitions are shown in red ("sinks" in graph theory).
+//     These states once reached cannot be exited.
 func WriteDOT[T input](w io.Writer, sm *StateMachine[T]) (n int, err error) {
 	ngot, err := w.Write([]byte("digraph {\n  rankdir=LR;\n  node [shape = box];\n  graph [ dpi = 300 ];\n"))
 	n += ngot
