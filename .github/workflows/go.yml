@@ -26,11 +26,14 @@ jobs:
 
     - name: Test
       run: go test -v ./...
-      
-    - name: Upload coverage reports to Codecov
+    
+    - shell: bash
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       run: |
         # Replace `linux` below with the appropriate OS
         # Options are `alpine`, `linux`, `macos`, `windows`
         curl -Os https://uploader.codecov.io/latest/linux/codecov
         chmod +x codecov
-        ./codecov -t ${CODECOV_TOKEN}
+        ./codecov -t $CODECOV_TOKEN
+
