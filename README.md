@@ -1,6 +1,7 @@
 [![go.dev reference](https://pkg.go.dev/badge/github.com/soypat/go-maquina)](https://pkg.go.dev/github.com/soypat/go-maquina)
 [![Go Report Card](https://goreportcard.com/badge/github.com/soypat/go-maquina)](https://goreportcard.com/report/github.com/soypat/go-maquina)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![codecov](https://codecov.io/gh/soypat/go-maquina/branch/main/graph/badge.svg?token=5DH2RG1UVP)](https://codecov.io/gh/soypat/go-maquina)
 
 # go-maquina
 
