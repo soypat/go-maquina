@@ -25,7 +25,7 @@ jobs:
       run: go build -v ./...
 
     - name: Test
-      run: go test -v ./...
+      run: go test -v -coverprofile=coverage.txt -covermode=atomic ./...
     
     - shell: bash
       env:
@@ -33,7 +33,7 @@ jobs:
       run: |
         # Replace `linux` below with the appropriate OS
         # Options are `alpine`, `linux`, `macos`, `windows`
-        go test -v -coverprofile=coverage.txt -covermode=atomic ./...
+        # go test -v -coverprofile=coverage.txt -covermode=atomic ./...
         echo "covtok=$CODECOV_TOKEN"
         curl -Os https://uploader.codecov.io/latest/linux/codecov
         chmod +x codecov
