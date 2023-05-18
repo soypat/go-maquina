@@ -72,10 +72,10 @@ func (sm *StateMachine[T]) Fire(ctx context.Context, t Trigger, input T) error {
 	return nil
 }
 
-// PermittedTriggers returns triggers which are permitted for
+// TriggersPermitted returns triggers which are permitted for
 // the current State given input and ctx Context by calling the guard clauses with input.
 // A Trigger transition is permitted if all guard clauses return true.
-func (sm *StateMachine[T]) PermittedTriggers(ctx context.Context, input T) []Trigger {
+func (sm *StateMachine[T]) TriggersPermitted(ctx context.Context, input T) []Trigger {
 	var permitted []Trigger
 	for _, transition := range sm.actual.transitions {
 		if err := transition.isPermitted(ctx, input); err == nil {
@@ -85,9 +85,9 @@ func (sm *StateMachine[T]) PermittedTriggers(ctx context.Context, input T) []Tri
 	return permitted
 }
 
-// AvailableTriggers returns all triggers registered for the current State.
+// TriggersAvailable returns all triggers registered for the current State.
 // Firing any of these triggers may fail if a guard clause returns false.
-func (sm *StateMachine[T]) AvailableTriggers() []Trigger {
+func (sm *StateMachine[T]) TriggersAvailable() []Trigger {
 	var available []Trigger
 	for _, transition := range sm.actual.transitions {
 		available = append(available, transition.Trigger)
@@ -118,9 +118,8 @@ func (sm *StateMachine[T]) OnTransitioned(f func(s Transition[T])) {
 // Triggers set on a state take precedence over an always permitted trigger.
 // It panics if trigger is the wildcard trigger or if dst is nil.
 func (sm *StateMachine[T]) AlwaysPermit(trigger Trigger, dst *State[T], guards ...GuardClause[T]) {
-	if trigger == triggerWildcard {
-		panic(errTriggerWildcardNotAllowed)
-	} else if dst == nil {
+	trigger.mustNotBeWildcard()
+	if dst == nil {
 		panic("nil destination state")
 	}
 	transition := Transition[T]{

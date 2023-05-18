@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
@@ -165,11 +166,14 @@ func TestOnEntryExitFrom(t *testing.T) {
 	state1 := NewState("state1", 1)
 	state2 := NewState("state2", 2)
 	state3 := NewState("state3", 3)
-	var countEntry1_2, countEntry2_3, countEntry3_2, countReentry1 int
+	var countEntry1_2, countEntry2_3, countEntry3_2, countReentry1, countExit1_2 int
 	state1.Permit(trigger1_2, state2)
 	state1.Permit(triggerReentry1, state1)
 	state1.OnReentryFrom(triggerReentry1, func(ctx context.Context, input int) {
 		countReentry1++
+	})
+	state1.OnExitThrough(trigger1_2, func(ctx context.Context, input int) {
+		countExit1_2++
 	})
 
 	state2.Permit(trigger2_3, state3)
@@ -194,9 +198,16 @@ func TestOnEntryExitFrom(t *testing.T) {
 	if countReentry1 != 1 {
 		t.Error("expected 1 reentry into state1, got", countReentry1)
 	}
+	if countExit1_2 != 0 {
+		t.Error("expected 0 exit from state1, got", countExit1_2)
+	}
+
 	err = sm.FireBg(trigger1_2, 1)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if countExit1_2 != 1 {
+		t.Error("expected 1 exit from state1 to state2, got", countExit1_2)
 	}
 	if countEntry1_2 != 1 {
 		t.Error("expected 1 entry into state2 from state1, got", countEntry1_2)
@@ -294,6 +305,7 @@ func makeDOT(name string, sm *StateMachine[int]) {
 }
 
 func TestMustPanics(t *testing.T) {
+	var okState = NewState("ok1", 1)
 	var nilGC func(_ context.Context, _ int) error
 	var nilState *State[int]
 	testCases := []struct {
@@ -340,15 +352,73 @@ func TestMustPanics(t *testing.T) {
 			desc: "empty trigger",
 			fn:   func() { NewState("ok", 1).Permit("", NewState("notok", 2)) },
 		},
+		{
+			desc: "trigger registered twice in state",
+			fn: func() {
+				s := NewState("ok", 1)
+				s.Permit("trig1", s)
+				s.Permit("trig1", s)
+			},
+		},
+		{
+			desc: "nil destination state in always permit",
+			fn:   func() { NewStateMachine(okState).AlwaysPermit("ok", nil) },
+		},
+		{
+			desc: "wildcard trigger in always permit",
+			fn:   func() { NewStateMachine(okState).AlwaysPermit(triggerWildcard, okState) },
+		},
+		{
+			desc: "empty trigger in always permit",
+			fn:   func() { NewStateMachine(okState).AlwaysPermit("", okState) },
+		},
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
 			defer func() {
 				if r := recover(); r == nil {
-					t.Errorf("expected panic, got nil")
+					t.Errorf("expected panic, got no panic")
 				}
 			}()
 			tC.fn()
 		})
+	}
+}
+
+func ExampleSimpleStateDrawing() {
+	state1 := NewState("state1", 1)
+	state2 := NewState("state2", 2)
+	state1.Permit("trigger", state2)
+	sm := NewStateMachine(state1)
+	var buf bytes.Buffer
+	_, err := WriteDOT(&buf, sm)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(buf.String())
+	//Unordered output:
+	// digraph {
+	//   rankdir=LR;
+	//   node [shape = box];
+	//   graph [ dpi = 300 ];
+	//   "state1" -> "state2" [ label = "trigger", style = "solid" ];
+	//   "state2" [ color = red ]
+	//   "state1" [ color = blue ]
+	// }
+}
+
+func TestTriggersAvailable(t *testing.T) {
+	states := hyperStates(8)
+	sm := NewStateMachine(states[0])
+	tr := sm.TriggersAvailable()
+	if len(tr) != 7 {
+		t.Error("expected 7 triggers, got", len(tr))
+	}
+	for i := 0; i < len(tr); i++ {
+		for j := i + 1; j < len(tr); j++ {
+			if tr[i] == tr[j] {
+				t.Errorf("expected unique triggers, got %d == %d", i, j)
+			}
+		}
 	}
 }

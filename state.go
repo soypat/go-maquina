@@ -39,7 +39,7 @@ func (s *State[T]) Permit(t Trigger, dst *State[T], guards ...GuardClause[T]) {
 	if dst == nil {
 		panic("nil destination state")
 	}
-	s.mustValidateAndNotExist(t)
+	s.validateForPermit(t)
 	s.transitions = append(s.transitions, Transition[T]{
 		Src: s, Dst: dst, Trigger: t, guards: guards,
 	})
@@ -48,7 +48,7 @@ func (s *State[T]) Permit(t Trigger, dst *State[T], guards ...GuardClause[T]) {
 // OnEntryFrom registers a callback that executes on entering State s
 // through Trigger t. Does not execute on reentry.
 func (s *State[T]) OnEntryFrom(t Trigger, f func(ctx context.Context, input T)) {
-	s.mustValidate(t)
+	t.mustNotBeWildcard()
 	s.onEntryInternal(t, f)
 }
 
@@ -61,7 +61,7 @@ func (s *State[T]) OnEntry(f func(ctx context.Context, input T)) {
 // OnExitThrough registers a callback that executes on exiting State s
 // through Trigger t. Does not execute on reentry.
 func (s *State[T]) OnExitThrough(t Trigger, f func(ctx context.Context, input T)) {
-	s.mustValidate(t)
+	t.mustNotBeWildcard()
 	s.onExitInternal(t, f)
 }
 
@@ -78,7 +78,7 @@ func (s *State[T]) OnReentry(f func(ctx context.Context, input T)) {
 
 // OnReentryFrom registers a callback that executes when reentering State s through Trigger t.
 func (s *State[T]) OnReentryFrom(t Trigger, f func(ctx context.Context, input T)) {
-	s.mustValidate(t)
+	t.mustNotBeWildcard()
 	s.onReentryInternal(t, f)
 }
 
@@ -133,17 +133,18 @@ func (s *State[T]) onEntryInternal(t Trigger, f fringeFunc[T]) {
 
 var errTriggerWildcardNotAllowed = errors.New("trigger " + triggerWildcard.Quote() + " reserved for internal use (wildcard)")
 
-func (s *State[T]) mustValidateAndNotExist(t Trigger) {
-	s.mustValidate(t)
+func (s *State[T]) validateForPermit(t Trigger) {
+	t.mustNotBeWildcard()
 	existingTransition := s.getTransition(t)
 	if existingTransition != nil {
-		panic("trigger " + t.Quote() + " already registed as transition: " + existingTransition.String())
+		panic("trigger " + t.Quote() + " already registered as transition: " + existingTransition.String())
 	}
 }
 
-func (s *State[T]) mustValidate(t Trigger) {
+func (t Trigger) mustNotBeWildcard() {
 	switch t {
 	case "":
+		// we also perform an empty trigger check since that is never allowed.
 		panic("trigger must not be empty string")
 	case triggerWildcard:
 		panic(errTriggerWildcardNotAllowed)
