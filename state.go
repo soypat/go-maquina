@@ -1,7 +1,6 @@
 package maquina
 
 import (
-	"context"
 	"errors"
 )
 
@@ -47,41 +46,76 @@ func (s *State[T]) Permit(t Trigger, dst *State[T], guards ...GuardClause[T]) {
 
 // OnEntryFrom registers a callback that executes on entering State s
 // through Trigger t. Does not execute on reentry.
-func (s *State[T]) OnEntryFrom(t Trigger, f func(ctx context.Context, input T)) {
+func (s *State[T]) OnEntryFrom(t Trigger, fcb FringeCallback[T]) {
 	t.mustNotBeWildcard()
-	s.onEntryInternal(t, f)
+	s.onEntryInternal(t, fcb)
 }
 
 // OnEntry registers a callback that executes on entering State s.
 // Does not execute on reentry.
-func (s *State[T]) OnEntry(f func(ctx context.Context, input T)) {
-	s.onEntryInternal(triggerWildcard, f)
+func (s *State[T]) OnEntry(fcb FringeCallback[T]) {
+	s.onEntryInternal(triggerWildcard, fcb)
 }
 
 // OnExitThrough registers a callback that executes on exiting State s
 // through Trigger t. Does not execute on reentry.
-func (s *State[T]) OnExitThrough(t Trigger, f func(ctx context.Context, input T)) {
+func (s *State[T]) OnExitThrough(t Trigger, fcb FringeCallback[T]) {
 	t.mustNotBeWildcard()
-	s.onExitInternal(t, f)
+	s.onExitInternal(t, fcb)
 }
 
 // OnExit registers a callback that executes on exiting State s.
 // Does not execute on reentry.
-func (s *State[T]) OnExit(f func(ctx context.Context, input T)) {
-	s.onExitInternal(triggerWildcard, f)
+func (s *State[T]) OnExit(fcb FringeCallback[T]) {
+	s.onExitInternal(triggerWildcard, fcb)
 }
 
 // OnReentry registers a callback that executes when reentering State s.
-func (s *State[T]) OnReentry(f func(ctx context.Context, input T)) {
-	s.onReentryInternal(triggerWildcard, f)
+func (s *State[T]) OnReentry(fcb FringeCallback[T]) {
+	s.onReentryInternal(triggerWildcard, fcb)
 }
 
 // OnReentryFrom registers a callback that executes when reentering State s through Trigger t.
-func (s *State[T]) OnReentryFrom(t Trigger, f func(ctx context.Context, input T)) {
+func (s *State[T]) OnReentryFrom(t Trigger, fcb FringeCallback[T]) {
 	t.mustNotBeWildcard()
-	s.onReentryInternal(t, f)
+	s.onReentryInternal(t, fcb)
 }
 
+// OnExitCallbacks returns all callbacks registered to execute on exiting State s
+// when trigger t is fired. If t is the empty string all callbacks registered to
+// execute on exiting State s are returned.
+func (s *State[T]) OnExitCallbacks(t Trigger) (callbacks []FringeCallback[T]) {
+	return findCallbacks(t, s.exitFuncs)
+}
+
+// OnEntryCallbacks returns all callbacks registered to execute on entering State s
+// when trigger t is fired. If t is the empty string all callbacks registered to
+// execute on entering State s are returned.
+func (s *State[T]) OnEntryCallbacks(t Trigger) (callbacks []FringeCallback[T]) {
+	return findCallbacks(t, s.entryFuncs)
+}
+
+// OnReentryCallbacks returns all callbacks registered to execute on reentering
+// State s when trigger t is fired. If t is the empty string all callbacks
+// registered to execute on reentering State s are returned.
+func (s *State[T]) OnReentryCallbacks(t Trigger) (callbacks []FringeCallback[T]) {
+	return findCallbacks(t, s.reentryFuncs)
+}
+
+func findCallbacks[T input](t Trigger, fns []triggeredFunc[T]) (callbacks []FringeCallback[T]) {
+	if t == triggerWildcard {
+		return nil
+	}
+	if t == "" {
+		t = triggerWildcard
+	}
+	for i := 0; i < len(fns); i++ {
+		if triggersEqual(t, fns[i].t) {
+			callbacks = append(callbacks, fns[i].f)
+		}
+	}
+	return callbacks
+}
 func (s *State[T]) hasTransition(t Trigger) bool {
 	for i := 0; i < len(s.transitions); i++ {
 		if s.transitions[i].Trigger == t {
@@ -101,28 +135,28 @@ func (s *State[T]) isSink() bool {
 	return true
 }
 
-func (s *State[T]) onExitInternal(t Trigger, f fringeFunc[T]) {
-	if f == nil {
+func (s *State[T]) onExitInternal(t Trigger, fcb FringeCallback[T]) {
+	if fcb.cb == nil {
 		panic("onExit function cannot be nil")
 	}
 	s.exitFuncs = append(s.exitFuncs, triggeredFunc[T]{
-		f: f,
+		f: fcb,
 		t: t,
 	})
 }
 
-func (s *State[T]) onReentryInternal(t Trigger, f fringeFunc[T]) {
-	if f == nil {
+func (s *State[T]) onReentryInternal(t Trigger, fcb FringeCallback[T]) {
+	if fcb.cb == nil {
 		panic("onReentry function cannot be nil")
 	}
 	s.reentryFuncs = append(s.reentryFuncs, triggeredFunc[T]{
-		f: f,
+		f: fcb,
 		t: t,
 	})
 }
 
-func (s *State[T]) onEntryInternal(t Trigger, f fringeFunc[T]) {
-	if f == nil {
+func (s *State[T]) onEntryInternal(t Trigger, f FringeCallback[T]) {
+	if f.cb == nil {
 		panic("onEntry function cannot be nil")
 	}
 	s.entryFuncs = append(s.entryFuncs, triggeredFunc[T]{

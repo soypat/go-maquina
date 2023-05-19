@@ -55,10 +55,30 @@ func NewGuard[T input](label string, guard func(ctx context.Context, input T) er
 
 type triggeredFunc[T input] struct {
 	t Trigger
-	f fringeFunc[T]
+	f FringeCallback[T]
 }
 
-type fringeFunc[T input] func(ctx context.Context, input T)
+// FringeCallback represents a callback that executes on the fringe of a state
+// transition. It can be used to execute code on entry, exit or reentry of a state.
+type FringeCallback[T input] struct {
+	label string
+	cb    func(ctx context.Context, tr Transition[T], input T)
+}
+
+// String returns the label with which cb was created.
+func (cb FringeCallback[T]) String() string { return cb.label }
+
+// NewFringeCallback instantiates a new FringeCallback with a label and a callback
+// that is executed on the fringe of a state transition.
+// The label is used for printing of the callback and does not need to be unique.
+func NewFringeCallback[T input](label string, callback func(ctx context.Context, tr Transition[T], input T)) FringeCallback[T] {
+	if label == "" {
+		panic("empty fringe callback label")
+	} else if callback == nil {
+		panic("nil fringe callback function")
+	}
+	return FringeCallback[T]{label: label, cb: callback}
+}
 
 // String returns the trigger string with which it was created.
 func (t Trigger) String() string { return string(t) }
@@ -77,26 +97,26 @@ const triggerWildcard Trigger = "*"
 func triggersEqual(a, b Trigger) bool          { return a == b || a == triggerWildcard || b == triggerWildcard }
 func statesEqual[T input](a, b *State[T]) bool { return a.label == b.label }
 
-func (s *State[T]) exit(ctx context.Context, t Trigger, input T) {
+func (s *State[T]) exit(ctx context.Context, tr Transition[T], input T) {
 	for i := 0; i < len(s.exitFuncs); i++ {
-		if triggersEqual(s.exitFuncs[i].t, t) {
-			s.exitFuncs[i].f(ctx, input)
+		if triggersEqual(s.exitFuncs[i].t, tr.Trigger) {
+			s.exitFuncs[i].f.cb(ctx, tr, input)
 		}
 	}
 }
 
-func (s *State[T]) enter(ctx context.Context, t Trigger, input T) {
+func (s *State[T]) enter(ctx context.Context, tr Transition[T], input T) {
 	for i := 0; i < len(s.entryFuncs); i++ {
-		if triggersEqual(s.entryFuncs[i].t, t) {
-			s.entryFuncs[i].f(ctx, input)
+		if triggersEqual(s.entryFuncs[i].t, tr.Trigger) {
+			s.entryFuncs[i].f.cb(ctx, tr, input)
 		}
 	}
 }
 
-func (s *State[T]) reenter(ctx context.Context, t Trigger, input T) {
+func (s *State[T]) reenter(ctx context.Context, tr Transition[T], input T) {
 	for i := 0; i < len(s.reentryFuncs); i++ {
-		if triggersEqual(s.reentryFuncs[i].t, t) {
-			s.reentryFuncs[i].f(ctx, input)
+		if triggersEqual(s.reentryFuncs[i].t, tr.Trigger) {
+			s.reentryFuncs[i].f.cb(ctx, tr, input)
 		}
 	}
 }
@@ -108,19 +128,17 @@ func (s *State[T]) reenter(ctx context.Context, t Trigger, input T) {
 // or entry function was run and encountered an error since this would
 // leave the state machine in an undefined state. Guard clauses should
 // prevent this from happening.
-func fire[T input](ctx context.Context, tr *Transition[T], input T) error {
+func fire[T input](ctx context.Context, tr Transition[T], input T) error {
 	if err := tr.isPermitted(ctx, input); err != nil {
 		return err
 	}
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
+
 	if statesEqual(tr.Src, tr.Dst) {
-		tr.Src.reenter(ctx, tr.Trigger, input)
+		tr.Src.reenter(ctx, tr, input)
 		return nil
 	}
-	tr.Src.exit(ctx, tr.Trigger, input)
-	tr.Dst.enter(ctx, tr.Trigger, input)
+	tr.Src.exit(ctx, tr, input)
+	tr.Dst.enter(ctx, tr, input)
 	return nil
 }
 
@@ -170,6 +188,10 @@ func (tr Transition[T]) isPermitted(ctx context.Context, input T) error {
 	for i := 0; i < len(tr.guards); i++ {
 		if err := tr.guards[i].guard(ctx, input); err != nil {
 			return &GuardClauseError{err: err, Label: tr.guards[i].label}
+		}
+		ctxErr := ctx.Err()
+		if ctxErr != nil {
+			return ctxErr
 		}
 	}
 	return nil

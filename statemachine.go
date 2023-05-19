@@ -10,8 +10,8 @@ import (
 type StateMachine[T input] struct {
 	actual             *State[T]
 	onUnhandledTrigger func(s *State[T], t Trigger) error
-	onTransitioning    func(tr Transition[T])
-	onTransitioned     func(tr Transition[T])
+	onTransitioning    FringeCallback[T]
+	onTransitioned     FringeCallback[T]
 }
 
 // NewStateMachine returns a StateMachine with initial State s.
@@ -33,8 +33,11 @@ func (sm *StateMachine[T]) State() *State[T] {
 // context.Background().
 //
 // FireBg returns an error in the following cases:
-//   - A guard clause fails to validate (returns wrapped error)
+//   - A guard clause fails to validate (returns GuardClauseError).
 //   - OnUnhandledTrigger registered callback catches an unhandled trigger and returns an error.
+//
+// FireBg panics if there is no registered trigger on the current state and the
+// OnUnhandledTrigger callback has not been set.
 func (sm *StateMachine[T]) FireBg(t Trigger, input T) error {
 	return sm.Fire(context.Background(), t, input)
 }
@@ -42,9 +45,13 @@ func (sm *StateMachine[T]) FireBg(t Trigger, input T) error {
 // Fire fires the state transition corresponding to the trigger T.
 //
 // Fire returns an error in the following cases:
-//   - ctx.Err() != nil (cancelled context). Fire returns ctx.Err() in this case.
+//   - ctx.Err() != nil (cancelled context) for the case where the context is cancelled
+//     before the exit/reentry functions are run.
 //   - A guard clause fails to validate (returns GuardClauseError).
 //   - OnUnhandledTrigger registered callback catches an unhandled trigger and returns an error.
+//
+// Fire panics if there is no registered trigger on the current state and the
+// OnUnhandledTrigger callback has not been set.
 func (sm *StateMachine[T]) Fire(ctx context.Context, t Trigger, input T) error {
 	if t == triggerWildcard {
 		panic("cannot fire wildcard trigger") // Panic since this would imply a bug in the code.
@@ -56,19 +63,20 @@ func (sm *StateMachine[T]) Fire(ctx context.Context, t Trigger, input T) error {
 		}
 		panic("trigger " + t.Quote() + " not handled for state " + sm.actual.String())
 	}
-	if sm.onTransitioning != nil {
-		sm.onTransitioning(*transition)
+	tr := *transition
+	if sm.onTransitioning.cb != nil {
+		sm.onTransitioning.cb(ctx, tr, input)
 	}
-	err := fire(ctx, transition, input)
+	err := fire(ctx, tr, input)
 	if err != nil {
 		// an error here usually means a guard clause did not validate.
 		// or context.Context was cancelled (ctx.Err() != nil)
 		return err
 	}
-	if sm.onTransitioned != nil {
-		sm.onTransitioned(*transition)
-	}
 	sm.actual = transition.Dst
+	if sm.onTransitioned.cb != nil {
+		sm.onTransitioned.cb(ctx, tr, input)
+	}
 	return nil
 }
 
@@ -104,14 +112,19 @@ func (sm *StateMachine[T]) OnUnhandledTrigger(f func(current *State[T], t Trigge
 
 // OnTransitioning registers the callback which is invoked when transitioning commences.
 // It replaces the callback set by a previous call to OnTransitioning.
-func (sm *StateMachine[T]) OnTransitioning(f func(s Transition[T])) {
-	sm.onTransitioning = f
+// It is the first callback executed when transitioning, preceding any guard clauses,
+// exiting and entering callbacks.
+func (sm *StateMachine[T]) OnTransitioning(fcb FringeCallback[T]) {
+	sm.onTransitioning = fcb
 }
 
 // OnTransitioned registers the callback which is invoked when transition finalizes.
 // It replaces the callback set by a previous call to OnTransitioned.
-func (sm *StateMachine[T]) OnTransitioned(f func(s Transition[T])) {
-	sm.onTransitioned = f
+// It is called after all guard clauses, exiting and entering callbacks, and
+// after the state machine has had its actual state changed to the destination state.
+// It is not called if the transition fails and the new destination state is not set.
+func (sm *StateMachine[T]) OnTransitioned(fcb FringeCallback[T]) {
+	sm.onTransitioned = fcb
 }
 
 // AlwaysPermit registers a trigger which is always permitted for the current state.

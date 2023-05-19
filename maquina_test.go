@@ -11,6 +11,8 @@ import (
 	"testing"
 )
 
+type intTransition = Transition[int]
+
 func TestStateMachine_OnUnhandledTrigger(t *testing.T) {
 	var unhandled = errors.New("unhandled")
 	sm := NewStateMachine(NewState("start", 1))
@@ -42,12 +44,14 @@ func TestStateMachine_alwaysPermit(t *testing.T) {
 	sm.AlwaysPermit(alwaysTrig, failsafeState)
 	// makeDOT("failsafe_alwayspermit", sm)
 	i := 0
-	sm.OnTransitioning(func(s Transition[int]) {
-		i += 1
+	fcbP1 := NewFringeCallback("plus1", func(_ context.Context, _ intTransition, _ int) {
+		i++
 	})
-	sm.OnTransitioned(func(s Transition[int]) {
+	fcbP2 := NewFringeCallback("plus1", func(_ context.Context, _ intTransition, _ int) {
 		i += 2
 	})
+	sm.OnTransitioning(fcbP1)
+	sm.OnTransitioned(fcbP2)
 	err := sm.FireBg(alwaysTrig, 1)
 	if err != nil {
 		t.Error("expected no error, got", err)
@@ -85,29 +89,29 @@ func TestOnReentryExitEntry(t *testing.T) {
 	var reentryCount, exitCount1, entryCount2, exitCount2, entryCount3, exitCount3 int
 
 	state1.Permit(triggerReentry1, state1)
-	state1.OnReentry(func(ctx context.Context, input int) {
+	state1.OnReentry(NewFringeCallback("cb", func(ctx context.Context, _ intTransition, input int) {
 		reentryCount++
-	})
+	}))
 	state1.Permit(trigger1_2, state2)
-	state1.OnExit(func(ctx context.Context, input int) {
+	state1.OnExit(NewFringeCallback("cb", func(ctx context.Context, _ intTransition, input int) {
 		exitCount1++
-	})
+	}))
 
 	state2.Permit(trigger2_3, state3)
-	state2.OnEntry(func(ctx context.Context, input int) {
+	state2.OnEntry(NewFringeCallback("cb", func(ctx context.Context, _ intTransition, input int) {
 		entryCount2++
-	})
-	state2.OnExit(func(ctx context.Context, input int) {
+	}))
+	state2.OnExit(NewFringeCallback("cb", func(ctx context.Context, _ intTransition, input int) {
 		exitCount2++
-	})
+	}))
 
 	state3.Permit(trigger3_2, state2)
-	state3.OnExit(func(ctx context.Context, input int) {
+	state3.OnExit(NewFringeCallback("cb", func(ctx context.Context, _ intTransition, input int) {
 		exitCount3++
-	})
-	state3.OnEntry(func(ctx context.Context, input int) {
+	}))
+	state3.OnEntry(NewFringeCallback("cb", func(ctx context.Context, _ intTransition, input int) {
 		entryCount3++
-	})
+	}))
 	sm := NewStateMachine(state1)
 	// Perform reentries.
 	const reeentries = 5
@@ -169,26 +173,26 @@ func TestOnEntryExitFrom(t *testing.T) {
 	var countEntry1_2, countEntry2_3, countEntry3_2, countReentry1, countExit1_2 int
 	state1.Permit(trigger1_2, state2)
 	state1.Permit(triggerReentry1, state1)
-	state1.OnReentryFrom(triggerReentry1, func(ctx context.Context, input int) {
+	state1.OnReentryFrom(triggerReentry1, NewFringeCallback("cb", func(ctx context.Context, _ intTransition, input int) {
 		countReentry1++
-	})
-	state1.OnExitThrough(trigger1_2, func(ctx context.Context, input int) {
+	}))
+	state1.OnExitThrough(trigger1_2, NewFringeCallback("cb", func(ctx context.Context, _ intTransition, input int) {
 		countExit1_2++
-	})
+	}))
 
 	state2.Permit(trigger2_3, state3)
-	state2.OnEntryFrom(trigger1_2, func(ctx context.Context, input int) {
+	state2.OnEntryFrom(trigger1_2, NewFringeCallback("cb", func(ctx context.Context, _ intTransition, input int) {
 		countEntry1_2++
-	})
+	}))
 
-	state2.OnEntryFrom(trigger3_2, func(ctx context.Context, input int) {
+	state2.OnEntryFrom(trigger3_2, NewFringeCallback("cb", func(ctx context.Context, _ intTransition, input int) {
 		countEntry3_2++
-	})
+	}))
 
 	state3.Permit(trigger3_2, state2)
-	state3.OnEntryFrom(trigger2_3, func(ctx context.Context, input int) {
+	state3.OnEntryFrom(trigger2_3, NewFringeCallback("cb", func(ctx context.Context, _ intTransition, input int) {
 		countEntry2_3++
-	})
+	}))
 
 	sm := NewStateMachine(state1)
 	err := sm.FireBg(triggerReentry1, 1)
@@ -307,7 +311,10 @@ func makeDOT(name string, sm *StateMachine[int]) {
 func TestMustPanics(t *testing.T) {
 	var okState = NewState("ok1", 1)
 	var nilGC func(_ context.Context, _ int) error
+	var nilFringeCallback func(_ context.Context, _ intTransition, _ int)
 	var nilState *State[int]
+	var nilFringe FringeCallback[int]
+	var okFringe = NewFringeCallback("cb", func(_ context.Context, _ intTransition, _ int) {})
 	testCases := []struct {
 		desc string
 		fn   func()
@@ -334,19 +341,27 @@ func TestMustPanics(t *testing.T) {
 		},
 		{
 			desc: "nil on exit callback",
-			fn:   func() { NewState("ok", 1).OnExit(nil) },
+			fn:   func() { NewState("ok", 1).OnExit(nilFringe) },
 		},
 		{
 			desc: "nil on entry callback",
-			fn:   func() { NewState("ok", 1).OnEntry(nil) },
+			fn:   func() { NewState("ok", 1).OnEntry(nilFringe) },
 		},
 		{
 			desc: "nil on reentry callback",
-			fn:   func() { NewState("ok", 1).OnReentry(nil) },
+			fn:   func() { NewState("ok", 1).OnReentry(nilFringe) },
+		},
+		{
+			desc: "empty fringe label",
+			fn:   func() { NewFringeCallback("", func(_ context.Context, _ intTransition, _ int) {}) },
+		},
+		{
+			desc: "nil fringe callback",
+			fn:   func() { NewFringeCallback("cb", nilFringeCallback) },
 		},
 		{
 			desc: "use of trigger wildcard",
-			fn:   func() { NewState("ok", 1).OnEntryFrom(triggerWildcard, func(ctx context.Context, input int) {}) },
+			fn:   func() { NewState("ok", 1).OnEntryFrom(triggerWildcard, okFringe) },
 		},
 		{
 			desc: "empty trigger",

@@ -5,7 +5,14 @@
 
 # go-maquina
 
-Create finite-state machines in Go delightfully. Inspired by [stateless](https://github.com/qmuntal/stateless).
+Create finite-state machines in Go delightfully simple. Inspired by [stateless](https://github.com/qmuntal/stateless).
+
+If you wish to build state machines that are extremely maintainable and stand the test of time
+you have come to the right place. 
+
+## Highlights
+- Labelled everything: Label your states, triggers, guard clauses and callbacks so that...
+- You can visualize state machines as a DOT generated graph. See examples below!
 
 _Maquina_ is the spanish word for machine. It is pronounced maa-kee-nuh, much like _machina_ from the Latin calque [_deus-ex-machina_](https://en.wikipedia.org/wiki/Deus_ex_machina).
 
