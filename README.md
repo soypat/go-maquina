@@ -5,7 +5,7 @@
 
 # go-maquina
 
-Create finite-state machines in Go delightfully simple. Inspired by [stateless](https://github.com/qmuntal/stateless).
+Create delightfully simple finite-state machines in Go. Inspired by [stateless](https://github.com/qmuntal/stateless).
 
 If you wish to build state machines that are extremely maintainable and stand the test of time
 you have come to the right place. 
