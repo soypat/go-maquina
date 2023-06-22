@@ -206,16 +206,6 @@ func (tr Transition[T]) String() string {
 	return str
 }
 
-// String returns a pretty-printed representation of the state and its transitions
-// separated by newlines.
-func (s State[T]) String() (str string) {
-	str += s.label + ":\n"
-	for i := 0; i < len(s.transitions); i++ {
-		str += "\t" + s.transitions[i].String() + "\n"
-	}
-	return str
-}
-
 // WalkStates recurses down the state tree in a depth first search for
 // all unique states in what would be a state machine starting with the argument state.
 // It calls fn on every new state it finds. If fn returns an error, the walk is aborted

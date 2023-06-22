@@ -29,6 +29,11 @@ func (sm *StateMachine[T]) State() *State[T] {
 	return sm.actual
 }
 
+// StateLabel returns the current state label. Is shorthand for sm.State().Label().
+// Is provided for convenience as a method to allow allow construction
+// of state machine interface types with no type parameters.
+func (sm *StateMachine[T]) StateLabel() string { return sm.State().Label() }
+
 // FireBg fires the state transition corresponding to the trigger T with
 // context.Background().
 //
@@ -155,4 +160,28 @@ func (sm *StateMachine[T]) AlwaysPermit(trigger Trigger, dst *State[T], guards .
 		transition.Src = dst
 		dst.transitions = append(dst.transitions, transition)
 	}
+}
+
+// StateIsSource returns true if the current state is a source state, that is to say
+// if it has no incoming transitions. throughout the whole state machine.
+// Once a source state is transitioned out of it cannot be transitioned back to.
+func (sm *StateMachine[T]) StateIsSource() bool {
+	currentState := sm.State()
+	isSource := true
+	WalkStates(currentState, func(s *State[T]) error {
+		for _, tr := range s.transitions {
+			if statesEqual(currentState, tr.Dst) {
+				isSource = false
+				return errTriggerWildcardNotAllowed // Break out of WalkStates.
+			}
+		}
+		return nil
+	})
+	return isSource
+}
+
+// StateIsSink returns true if the current state is a sink state, that is to say
+// it has no transitions to states other than itself.
+func (sm *StateMachine[T]) StateIsSink() bool {
+	return sm.State().isSink()
 }

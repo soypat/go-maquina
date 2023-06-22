@@ -30,6 +30,19 @@ func NewState[T input](label string, _ T) *State[T] {
 	}
 }
 
+// Label returns the label with which the state was created. Does not heap allocate.
+func (s *State[T]) Label() string { return s.label }
+
+// String returns a pretty-printed representation of the state and its transitions
+// separated by newlines.
+func (s State[T]) String() (str string) {
+	str += s.label + ":\n"
+	for i := 0; i < len(s.transitions); i++ {
+		str += "\t" + s.transitions[i].String() + "\n"
+	}
+	return str
+}
+
 // Permit registers a state transition from receiver s to dst when Trigger t is
 // invoked given the guard clauses return true. If any of the guard clauses return
 // false the state transition is aborted and the Fire() attempt by the state machine
