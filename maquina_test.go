@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"os/exec"
 	"strconv"
@@ -434,6 +435,26 @@ func TestTriggersAvailable(t *testing.T) {
 			if tr[i] == tr[j] {
 				t.Errorf("expected unique triggers, got %d == %d", i, j)
 			}
+		}
+	}
+}
+
+func BenchmarkHyper(b *testing.B) {
+	rand.Seed(1)
+	states := hyperStates(8)
+	sm := NewStateMachine(states[0])
+	sm.OnUnhandledTrigger(func(current *State[int], t Trigger) error {
+		return nil
+	})
+	ctx := context.TODO()
+	// avail := sm.TriggersPermitted(ctx, 1)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		avail := sm.actual.transitions // Avoid allocations.
+		nextTrigger := avail[rand.Intn(len(avail))]
+		err := sm.Fire(ctx, nextTrigger.Trigger, 1)
+		if err != nil {
+			b.Log("error", err)
 		}
 	}
 }

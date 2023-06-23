@@ -12,9 +12,25 @@ you have come to the right place.
 
 ## Highlights
 - Labelled everything: Label your states, triggers, guard clauses and callbacks so that...
-- You can visualize state machines as a DOT generated graph. See examples below!
+	- You can visualize state machines as a DOT generated graph. See examples below!
+	- Deep introspection into what is going on in your state machine.
+- Decent performance, no allocations: see benchmark below.
+
 
 _Maquina_ is the spanish word for machine. It is pronounced maa-kee-nuh, much like _machina_ from the Latin calque [_deus-ex-machina_](https://en.wikipedia.org/wiki/Deus_ex_machina).
+
+### Benchmark
+Benchmarked below is the time it takes for a transition to complete when no callbacks or guard clauses are in place.
+```
+$ go test -test.bench=. -benchmem
+goos: linux
+goarch: amd64
+pkg: github.com/soypat/go-maquina
+cpu: 12th Gen Intel(R) Core(TM) i5-12400F
+BenchmarkHyper-12       31407175                37.38 ns/op            0 B/op        0 allocs/op
+PASS
+ok      github.com/soypat/go-maquina    2.192s
+```
 
 ## Code organization
 

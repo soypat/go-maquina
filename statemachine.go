@@ -9,6 +9,7 @@ import (
 // a type that embeds StateMachine.
 type StateMachine[T input] struct {
 	actual             *State[T]
+	onFringe           func(tr Transition[T], fcb FringeCallback[T], input T)
 	onUnhandledTrigger func(s *State[T], t Trigger) error
 	onTransitioning    FringeCallback[T]
 	onTransitioned     FringeCallback[T]
@@ -72,7 +73,7 @@ func (sm *StateMachine[T]) Fire(ctx context.Context, t Trigger, input T) error {
 	if sm.onTransitioning.cb != nil {
 		sm.onTransitioning.cb(ctx, tr, input)
 	}
-	err := fire(ctx, tr, input)
+	err := sm.fire(ctx, tr, input)
 	if err != nil {
 		// an error here usually means a guard clause did not validate.
 		// or context.Context was cancelled (ctx.Err() != nil)
@@ -113,6 +114,13 @@ func (sm *StateMachine[T]) TriggersAvailable() []Trigger {
 // It replaces the callback set by a previous call to OnUnhandledTrigger.
 func (sm *StateMachine[T]) OnUnhandledTrigger(f func(current *State[T], t Trigger) error) {
 	sm.onUnhandledTrigger = f
+}
+
+// InspectFringes registers the callback which is invoked on on each individual fringe callback
+// encountered during a transition. This is almost exclusively useful for logging and debugging.
+// The callback argument is invoked before the FringeCallback is invoked.
+func (sm *StateMachine[T]) InspectFringes(cb func(tr Transition[T], fcb FringeCallback[T], input T)) {
+	sm.onFringe = cb
 }
 
 // OnTransitioning registers the callback which is invoked when transitioning commences.

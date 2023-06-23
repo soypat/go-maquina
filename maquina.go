@@ -97,26 +97,41 @@ const triggerWildcard Trigger = "*"
 func triggersEqual(a, b Trigger) bool          { return a == b || a == triggerWildcard || b == triggerWildcard }
 func statesEqual[T input](a, b *State[T]) bool { return a.label == b.label }
 
-func (s *State[T]) exit(ctx context.Context, tr Transition[T], input T) {
+func (sm *StateMachine[T]) exit(ctx context.Context, tr Transition[T], input T) {
+	s := tr.Src
 	for i := 0; i < len(s.exitFuncs); i++ {
 		if triggersEqual(s.exitFuncs[i].t, tr.Trigger) {
-			s.exitFuncs[i].f.cb(ctx, tr, input)
+			fringe := s.exitFuncs[i].f
+			if sm.onFringe != nil {
+				sm.onFringe(tr, fringe, input)
+			}
+			fringe.cb(ctx, tr, input)
 		}
 	}
 }
 
-func (s *State[T]) enter(ctx context.Context, tr Transition[T], input T) {
+func (sm *StateMachine[T]) enter(ctx context.Context, tr Transition[T], input T) {
+	s := tr.Dst
 	for i := 0; i < len(s.entryFuncs); i++ {
 		if triggersEqual(s.entryFuncs[i].t, tr.Trigger) {
-			s.entryFuncs[i].f.cb(ctx, tr, input)
+			fringe := s.entryFuncs[i].f
+			if sm.onFringe != nil {
+				sm.onFringe(tr, fringe, input)
+			}
+			fringe.cb(ctx, tr, input)
 		}
 	}
 }
 
-func (s *State[T]) reenter(ctx context.Context, tr Transition[T], input T) {
+func (sm *StateMachine[T]) reenter(ctx context.Context, tr Transition[T], input T) {
+	s := tr.Dst
 	for i := 0; i < len(s.reentryFuncs); i++ {
 		if triggersEqual(s.reentryFuncs[i].t, tr.Trigger) {
-			s.reentryFuncs[i].f.cb(ctx, tr, input)
+			fringe := s.reentryFuncs[i].f
+			if sm.onFringe != nil {
+				sm.onFringe(tr, fringe, input)
+			}
+			fringe.cb(ctx, tr, input)
 		}
 	}
 }
@@ -128,17 +143,16 @@ func (s *State[T]) reenter(ctx context.Context, tr Transition[T], input T) {
 // or entry function was run and encountered an error since this would
 // leave the state machine in an undefined state. Guard clauses should
 // prevent this from happening.
-func fire[T input](ctx context.Context, tr Transition[T], input T) error {
+func (sm *StateMachine[T]) fire(ctx context.Context, tr Transition[T], input T) error {
 	if err := tr.isPermitted(ctx, input); err != nil {
 		return err
 	}
-
 	if statesEqual(tr.Src, tr.Dst) {
-		tr.Src.reenter(ctx, tr, input)
+		sm.reenter(ctx, tr, input)
 		return nil
 	}
-	tr.Src.exit(ctx, tr, input)
-	tr.Dst.enter(ctx, tr, input)
+	sm.exit(ctx, tr, input)
+	sm.enter(ctx, tr, input)
 	return nil
 }
 
