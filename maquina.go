@@ -108,10 +108,21 @@ func (sm *StateMachine[T]) exit(ctx context.Context, tr Transition[T], input T) 
 			fringe.cb(ctx, tr, input)
 		}
 	}
+	if tr.Src.parent != nil && tr.Dst.parent != tr.Src.parent {
+		// Exit parent state if it exists and is not the destination state's parent.
+		newTr := tr
+		newTr.Src = tr.Src.parent
+		sm.exit(ctx, newTr, input)
+	}
 }
 
 func (sm *StateMachine[T]) enter(ctx context.Context, tr Transition[T], input T) {
 	s := tr.Dst
+	if tr.Dst.parent != nil && tr.Dst.parent != tr.Src.parent {
+		newTr := tr
+		newTr.Dst = tr.Dst.parent
+		sm.enter(ctx, newTr, input)
+	}
 	for i := 0; i < len(s.entryFuncs); i++ {
 		if triggersEqual(s.entryFuncs[i].t, tr.Trigger) {
 			fringe := s.entryFuncs[i].f

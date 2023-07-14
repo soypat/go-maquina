@@ -13,6 +13,7 @@ type State[T input] struct {
 	exitFuncs    []triggeredFunc[T]
 	entryFuncs   []triggeredFunc[T]
 	reentryFuncs []triggeredFunc[T]
+	parent       *State[T]
 }
 
 // NewState instantiates a state with a label for tracking and tracing.
@@ -32,6 +33,39 @@ func NewState[T input](label string, _ T) *State[T] {
 
 // Label returns the label with which the state was created. Does not heap allocate.
 func (s *State[T]) Label() string { return s.label }
+
+// LinkSubstates links the receiver state to the given states as substates.
+func (s *State[T]) LinkSubstates(states ...*State[T]) error {
+	for i := range states {
+		if states[i] == nil {
+			return errors.New("cannot link nil state")
+		}
+		if states[i].parent != nil {
+			return errors.New("state " + states[i].Label() + " already has parent " + states[i].parent.Label())
+		}
+		if s.IsSubstateOf(states[i]) {
+			return errors.New("making " + states[i].Label() + " a substate of " + s.Label() + " would cause a referential cycle")
+		}
+		states[i].parent = s
+	}
+
+	return nil
+}
+
+// IsSubstateOf returns true if the receiver state is a substate of the given
+// maybeParent state or if both states are equal.
+func (s *State[T]) IsSubstateOf(maybeParent *State[T]) bool {
+	if maybeParent == nil {
+		return false
+	}
+	for s != nil {
+		if statesEqual(s, maybeParent) {
+			return true
+		}
+		s = s.parent
+	}
+	return false
+}
 
 // String returns a pretty-printed representation of the state and its transitions
 // separated by newlines.
