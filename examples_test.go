@@ -3,8 +3,10 @@ package maquina_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
+	"time"
 
 	"github.com/soypat/go-maquina"
 )
@@ -50,7 +52,7 @@ func ExampleStateMachine_tollBooth() {
 	// guard clause "payment check" failed: customer underpaid with $8.49
 }
 
-func ExampleToDOT_3dPrinter() {
+func ExampleWriteDOT_threeDPrinter() {
 	type printerState struct {
 		x, y, z int
 	}
@@ -120,4 +122,81 @@ func ExampleToDOT_3dPrinter() {
 	//   "going home" -> "idle" [ label = "stop", style = "solid" ];
 	//   "idle" -> "idle" [ label = "stop", style = "solid" ];
 	// }
+}
+
+func ExampleWriteDOT_algorithmicTrading() {
+	getStock := func() string {
+		return string([]byte{byte(rand.Intn(26)) + 'A', byte(rand.Intn(26)) + 'A', byte(rand.Intn(26)) + 'A'})
+	}
+	type tradeState struct {
+		targetStock   string
+		quoteReceived time.Time
+	}
+	type transition = maquina.Transition[*tradeState]
+
+	const (
+		trigRequestQuote     = "request quote"
+		trigExecute          = "execute"
+		trigExecuteFail      = "execute failed"
+		trigCancel           = "cancel"
+		trigQuoteReceived    = "quote received"
+		trigExecuteConfirmed = "execute confirmed"
+	)
+	var (
+		stateWaitingOnQuote = maquina.NewState("waiting on quote", &tradeState{})
+		stateIdle           = maquina.NewState("idle", &tradeState{})
+		stateExecuting      = maquina.NewState("executing", &tradeState{})
+		stateCritical       = maquina.NewState("critical", &tradeState{})
+
+		fringeStockSelect = maquina.NewFringeCallback("stock select", func(_ context.Context, _ transition, state *tradeState) {
+			state.targetStock = getStock()
+		})
+
+		fringeStockClear = maquina.NewFringeCallback("stock clear", func(_ context.Context, _ transition, state *tradeState) {
+			state.targetStock = ""
+		})
+
+		guardQuoteStale = maquina.NewGuard("quote stale", func(ctx context.Context, state *tradeState) error {
+			const staleQuoteTimeout = 10 * time.Minute
+			elapsed := time.Since(state.quoteReceived)
+			if elapsed > staleQuoteTimeout || elapsed < 1 { // Sanity check included.
+				return errors.New("quote is stale: " + elapsed.String() + " elapsed")
+			}
+			return nil
+		})
+	)
+
+	stateIdle.Permit(trigRequestQuote, stateWaitingOnQuote)
+	stateIdle.OnExitThrough(trigRequestQuote, fringeStockSelect)
+	stateIdle.OnEntry(fringeStockClear)
+
+	stateWaitingOnQuote.Permit(trigExecute, stateExecuting, guardQuoteStale)
+	stateWaitingOnQuote.Permit(trigCancel, stateIdle)
+
+	stateExecuting.Permit(trigExecuteConfirmed, stateIdle)
+	stateExecuting.Permit(trigExecuteFail, stateWaitingOnQuote)
+
+	// Mark critical section as a superstate.
+	stateCritical.LinkSubstates(stateWaitingOnQuote, stateExecuting)
+
+	sm := maquina.NewStateMachine(stateIdle)
+	var buf bytes.Buffer
+	maquina.WriteDOT2(&buf, sm)
+	fmt.Println(buf.String())
+	//Unordered output:
+	//digraph {
+	//   rankdir=LR;
+	//   node [shape = box];
+	//   graph [ dpi = 300 ];
+	//   "idle" -> "waiting on quote" [ label = "request quote", style = "solid" ];
+	//   "waiting on quote" -> "executing" [ label = "execute\n[quote stale]", style = "dashed" ];
+	//   "waiting on quote" -> "idle" [ label = "cancel", style = "solid" ];
+	//   "executing" -> "idle" [ label = "execute confirmed", style = "solid" ];
+	//   "executing" -> "waiting on quote" [ label = "execute failed", style = "solid" ];
+	//   subgraph cluster_critical {
+	//     label = "critical";
+	//     "waiting on quote";
+	//     "executing";
+	//   }
+	//}
 }

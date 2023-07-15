@@ -7,6 +7,7 @@ import (
 // State basic functional unit of a finite state machine.
 // The T type parameter is the type of the input argument received by
 // entry, exit, reentry and guard clause callbacks during state transitions.
+// Two states are equal to eachother if they have identical labels.
 type State[T input] struct {
 	label        string
 	transitions  []Transition[T]
@@ -34,26 +35,26 @@ func NewState[T input](label string, _ T) *State[T] {
 // Label returns the label with which the state was created. Does not heap allocate.
 func (s *State[T]) Label() string { return s.label }
 
-// LinkSubstates links the receiver state to the given states as substates.
-func (s *State[T]) LinkSubstates(states ...*State[T]) error {
-	for i := range states {
-		if states[i] == nil {
+// LinkSubstates links argument states as substates of the receiver state s.
+func (s *State[T]) LinkSubstates(substates ...*State[T]) error {
+	for i := range substates {
+		if substates[i] == nil {
 			return errors.New("cannot link nil state")
 		}
-		if states[i].parent != nil {
-			return errors.New("state " + states[i].Label() + " already has parent " + states[i].parent.Label())
+		if substates[i].parent != nil {
+			return errors.New("state " + substates[i].Label() + " already has parent " + substates[i].parent.Label())
 		}
-		if s.IsSubstateOf(states[i]) {
-			return errors.New("making " + states[i].Label() + " a substate of " + s.Label() + " would cause a referential cycle")
+		if s.IsSubstateOf(substates[i]) {
+			return errors.New("making " + substates[i].Label() + " a substate of " + s.Label() + " would cause a referential cycle")
 		}
-		states[i].parent = s
+		substates[i].parent = s
 	}
 
 	return nil
 }
 
-// IsSubstateOf returns true if the receiver state is a substate of the given
-// maybeParent state or if both states are equal.
+// IsSubstateOf returns true if the receiver state s is a substate of the given
+// maybeParent state or if states are equal to each other.
 func (s *State[T]) IsSubstateOf(maybeParent *State[T]) bool {
 	if maybeParent == nil {
 		return false
