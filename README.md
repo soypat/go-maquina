@@ -85,6 +85,72 @@ customer paid $13.29, let them pass!
 guard clause failed: customer underpaid with $8.75
 guard clause failed: customer underpaid with $8.49
 ```
+## Algorithmic trading graph
+The code below outputs the following DOT graph code. Note how parent/super states can be crafted. Entry/Exit callbacks will be triggered on a superstate when entering/exiting a substate from outside/within the super state.
+
+![algorithmic trading example](https://user-images.githubusercontent.com/26156425/253705810-b716999f-1863-48e7-af86-3d3119f75100.png)
+
+
+```go
+getStock := func() string {
+		return string([]byte{byte(rand.Intn(26)) + 'A', byte(rand.Intn(26)) + 'A', byte(rand.Intn(26)) + 'A'})
+	}
+	type tradeState struct {
+		targetStock   string
+		quoteReceived time.Time
+	}
+	type transition = maquina.Transition[*tradeState]
+
+	const (
+		trigRequestQuote     = "request quote"
+		trigExecute          = "execute"
+		trigExecuteFail      = "execute failed"
+		trigCancel           = "cancel"
+		trigQuoteReceived    = "quote received"
+		trigExecuteConfirmed = "execute confirmed"
+	)
+	var (
+		stateWaitingOnQuote = maquina.NewState("waiting on quote", &tradeState{})
+		stateIdle           = maquina.NewState("idle", &tradeState{})
+		stateExecuting      = maquina.NewState("executing", &tradeState{})
+		stateCritical       = maquina.NewState("critical", &tradeState{})
+
+		fringeStockSelect = maquina.NewFringeCallback("stock select", func(_ context.Context, _ transition, state *tradeState) {
+			state.targetStock = getStock()
+		})
+
+		fringeStockClear = maquina.NewFringeCallback("stock clear", func(_ context.Context, _ transition, state *tradeState) {
+			state.targetStock = ""
+		})
+
+		guardQuoteStale = maquina.NewGuard("quote stale", func(ctx context.Context, state *tradeState) error {
+			const staleQuoteTimeout = 10 * time.Minute
+			elapsed := time.Since(state.quoteReceived)
+			if elapsed > staleQuoteTimeout || elapsed < 1 { // Sanity check included.
+				return errors.New("quote is stale: " + elapsed.String() + " elapsed")
+			}
+			return nil
+		})
+	)
+
+	stateIdle.Permit(trigRequestQuote, stateWaitingOnQuote)
+	stateIdle.OnExitThrough(trigRequestQuote, fringeStockSelect)
+	stateIdle.OnEntry(fringeStockClear)
+
+	stateWaitingOnQuote.Permit(trigExecute, stateExecuting, guardQuoteStale)
+	stateWaitingOnQuote.Permit(trigCancel, stateIdle)
+
+	stateExecuting.Permit(trigExecuteConfirmed, stateIdle)
+	stateExecuting.Permit(trigExecuteFail, stateWaitingOnQuote)
+
+	// Mark critical section as a superstate.
+	stateCritical.LinkSubstates(stateWaitingOnQuote, stateExecuting)
+
+	sm := maquina.NewStateMachine(stateIdle)
+	var buf bytes.Buffer
+	maquina.WriteDOT2(&buf, sm)
+	fmt.Println(buf.String())
+```
 
 ## 3D Printer graphviz example
 The code below outputs the following DOT graph code:
