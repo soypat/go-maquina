@@ -88,7 +88,7 @@ guard clause failed: customer underpaid with $8.49
 ## Algorithmic trading graph
 The code below outputs the following DOT graph code. Note how parent/super states can be crafted. Entry/Exit callbacks will be triggered on a superstate when entering/exiting a substate from outside/within the super state.
 
-![algorithmic trading example](https://user-images.githubusercontent.com/26156425/253706971-7654ca79-fbd1-439f-9400-3fdabfae9038.png)
+![algorithmic trading example](https://user-images.githubusercontent.com/26156425/253708380-8095da85-c6f2-49eb-8721-bf2747dc5330.png)
 
 
 ```go
