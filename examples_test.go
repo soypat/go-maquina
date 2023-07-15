@@ -157,7 +157,7 @@ func ExampleWriteDOT_algorithmicTrading() {
 			state.targetStock = ""
 		})
 
-		guardQuoteStale = maquina.NewGuard("quote stale", func(ctx context.Context, state *tradeState) error {
+		guardQuoteStale = maquina.NewGuard("quote staleness", func(ctx context.Context, state *tradeState) error {
 			const staleQuoteTimeout = 10 * time.Minute
 			elapsed := time.Since(state.quoteReceived)
 			if elapsed > staleQuoteTimeout || elapsed < 1 { // Sanity check included.
@@ -181,26 +181,31 @@ func ExampleWriteDOT_algorithmicTrading() {
 	stateExecuting.Permit(trigExecuteFail, stateReadyToOperate)
 
 	// Mark critical section as a superstate.
-	stateCritical.LinkSubstates(stateWaitingOnQuote, stateReadyToOperate, stateExecuting)
+	stateCritical.LinkSubstates(stateReadyToOperate, stateExecuting)
 
 	sm := maquina.NewStateMachine(stateIdle)
 	var buf bytes.Buffer
 	maquina.WriteDOT2(&buf, sm)
+	// cmd := exec.Command("dot", "-Tpng", "-o", "3dprinterNoBug.png")
+	// cmd.Stdin = &buf
+	// cmd.Run()
 	fmt.Println(buf.String())
 	//Unordered output:
-	//digraph {
+	// digraph {
 	//   rankdir=LR;
 	//   node [shape = box];
 	//   graph [ dpi = 300 ];
 	//   "idle" -> "waiting on quote" [ label = "request quote", style = "solid" ];
-	//   "waiting on quote" -> "executing" [ label = "execute\n[quote stale]", style = "dashed" ];
 	//   "waiting on quote" -> "idle" [ label = "cancel", style = "solid" ];
+	//   "waiting on quote" -> "ready to operate" [ label = "quote received", style = "solid" ];
+	//   "ready to operate" -> "executing" [ label = "execute\n[quote staleness]", style = "dashed" ];
+	//   "ready to operate" -> "idle" [ label = "cancel", style = "solid" ];
 	//   "executing" -> "idle" [ label = "execute confirmed", style = "solid" ];
-	//   "executing" -> "waiting on quote" [ label = "execute failed", style = "solid" ];
-	//   subgraph cluster_critical {
-	//     label = "critical";
-	//     "waiting on quote";
+	//   "executing" -> "ready to operate" [ label = "execute failed", style = "solid" ];
+	//   subgraph cluster_0 {
+	//     label = "critical section";
+	//     "ready to operate";
 	//     "executing";
 	//   }
-	//}
+	// }
 }
