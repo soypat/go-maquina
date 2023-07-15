@@ -103,10 +103,11 @@ func WriteDOT2[T input](w io.Writer, sm *StateMachine[T]) (n int, err error) {
 	if err != nil {
 		return n, err
 	}
-
+	i := 0
 	for label, substates := range superStates {
-		ngot, err = fmt.Fprintf(w, "  subgraph cluster_%[1]s {\n    label = %[1]q;\n", label)
+		ngot, err = fmt.Fprintf(w, "  subgraph cluster_%x {\n    label = %q;\n", i, label)
 		n += ngot
+		i++
 		if err != nil {
 			return n, err
 		}

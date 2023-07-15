@@ -88,11 +88,11 @@ guard clause failed: customer underpaid with $8.49
 ## Algorithmic trading graph
 The code below outputs the following DOT graph code. Note how parent/super states can be crafted. Entry/Exit callbacks will be triggered on a superstate when entering/exiting a substate from outside/within the super state.
 
-![algorithmic trading example](https://user-images.githubusercontent.com/26156425/253705810-b716999f-1863-48e7-af86-3d3119f75100.png)
+![algorithmic trading example](https://user-images.githubusercontent.com/26156425/253706971-7654ca79-fbd1-439f-9400-3fdabfae9038.png)
 
 
 ```go
-getStock := func() string {
+	getStock := func() string {
 		return string([]byte{byte(rand.Intn(26)) + 'A', byte(rand.Intn(26)) + 'A', byte(rand.Intn(26)) + 'A'})
 	}
 	type tradeState struct {
@@ -111,9 +111,10 @@ getStock := func() string {
 	)
 	var (
 		stateWaitingOnQuote = maquina.NewState("waiting on quote", &tradeState{})
+		stateReadyToOperate = maquina.NewState("ready to operate", &tradeState{})
 		stateIdle           = maquina.NewState("idle", &tradeState{})
 		stateExecuting      = maquina.NewState("executing", &tradeState{})
-		stateCritical       = maquina.NewState("critical", &tradeState{})
+		stateCritical       = maquina.NewState("critical section", &tradeState{})
 
 		fringeStockSelect = maquina.NewFringeCallback("stock select", func(_ context.Context, _ transition, state *tradeState) {
 			state.targetStock = getStock()
@@ -137,14 +138,17 @@ getStock := func() string {
 	stateIdle.OnExitThrough(trigRequestQuote, fringeStockSelect)
 	stateIdle.OnEntry(fringeStockClear)
 
-	stateWaitingOnQuote.Permit(trigExecute, stateExecuting, guardQuoteStale)
 	stateWaitingOnQuote.Permit(trigCancel, stateIdle)
+	stateWaitingOnQuote.Permit(trigQuoteReceived, stateReadyToOperate)
+
+	stateReadyToOperate.Permit(trigExecute, stateExecuting, guardQuoteStale)
+	stateReadyToOperate.Permit(trigCancel, stateIdle)
 
 	stateExecuting.Permit(trigExecuteConfirmed, stateIdle)
-	stateExecuting.Permit(trigExecuteFail, stateWaitingOnQuote)
+	stateExecuting.Permit(trigExecuteFail, stateReadyToOperate)
 
 	// Mark critical section as a superstate.
-	stateCritical.LinkSubstates(stateWaitingOnQuote, stateExecuting)
+	stateCritical.LinkSubstates(stateWaitingOnQuote, stateReadyToOperate, stateExecuting)
 
 	sm := maquina.NewStateMachine(stateIdle)
 	var buf bytes.Buffer

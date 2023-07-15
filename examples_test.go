@@ -144,9 +144,10 @@ func ExampleWriteDOT_algorithmicTrading() {
 	)
 	var (
 		stateWaitingOnQuote = maquina.NewState("waiting on quote", &tradeState{})
+		stateReadyToOperate = maquina.NewState("ready to operate", &tradeState{})
 		stateIdle           = maquina.NewState("idle", &tradeState{})
 		stateExecuting      = maquina.NewState("executing", &tradeState{})
-		stateCritical       = maquina.NewState("critical", &tradeState{})
+		stateCritical       = maquina.NewState("critical section", &tradeState{})
 
 		fringeStockSelect = maquina.NewFringeCallback("stock select", func(_ context.Context, _ transition, state *tradeState) {
 			state.targetStock = getStock()
@@ -170,14 +171,17 @@ func ExampleWriteDOT_algorithmicTrading() {
 	stateIdle.OnExitThrough(trigRequestQuote, fringeStockSelect)
 	stateIdle.OnEntry(fringeStockClear)
 
-	stateWaitingOnQuote.Permit(trigExecute, stateExecuting, guardQuoteStale)
 	stateWaitingOnQuote.Permit(trigCancel, stateIdle)
+	stateWaitingOnQuote.Permit(trigQuoteReceived, stateReadyToOperate)
+
+	stateReadyToOperate.Permit(trigExecute, stateExecuting, guardQuoteStale)
+	stateReadyToOperate.Permit(trigCancel, stateIdle)
 
 	stateExecuting.Permit(trigExecuteConfirmed, stateIdle)
-	stateExecuting.Permit(trigExecuteFail, stateWaitingOnQuote)
+	stateExecuting.Permit(trigExecuteFail, stateReadyToOperate)
 
 	// Mark critical section as a superstate.
-	stateCritical.LinkSubstates(stateWaitingOnQuote, stateExecuting)
+	stateCritical.LinkSubstates(stateWaitingOnQuote, stateReadyToOperate, stateExecuting)
 
 	sm := maquina.NewStateMachine(stateIdle)
 	var buf bytes.Buffer
