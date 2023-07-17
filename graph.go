@@ -27,50 +27,6 @@ func WriteDOT[T input](w io.Writer, sm *StateMachine[T]) (n int, err error) {
 		return n, err
 	}
 	isSource := true
-	err = WalkStates(sm.actual, func(s *State[T]) error {
-		if s.isSink() {
-			ngot, err = fmt.Fprintf(w, "  %q [ color = red ]\n", s.label)
-			n += ngot
-			if err != nil {
-				return err
-			}
-		}
-
-		for i := 0; i < len(s.transitions); i++ {
-			tr := s.transitions[i]
-			ngot, err = writeDOTentry(w, tr)
-			n += ngot
-			if err != nil {
-				return err
-			}
-			if isSource && statesEqual(sm.actual, tr.Dst) {
-				isSource = false
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return n, err
-	}
-	if isSource {
-		ngot, err = fmt.Fprintf(w, "  %q [ color = blue ]\n", sm.actual.label)
-		n += ngot
-	}
-	if err != nil {
-		return n, err
-	}
-	ngot, err = w.Write([]byte("}\n"))
-	n += ngot
-	return n, err
-}
-
-func WriteDOT2[T input](w io.Writer, sm *StateMachine[T]) (n int, err error) {
-	ngot, err := w.Write([]byte("digraph {\n  rankdir=LR;\n  node [shape = box];\n  graph [ dpi = 300 ];\n"))
-	n += ngot
-	if err != nil {
-		return n, err
-	}
-	isSource := true
 	superStates := make(map[string][]*State[T])
 	err = WalkStates(sm.actual, func(s *State[T]) error {
 		if s.isSink() {

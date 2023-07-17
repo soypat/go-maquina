@@ -185,7 +185,7 @@ func ExampleWriteDOT_algorithmicTrading() {
 
 	sm := maquina.NewStateMachine(stateIdle)
 	var buf bytes.Buffer
-	maquina.WriteDOT2(&buf, sm)
+	maquina.WriteDOT(&buf, sm)
 	// cmd := exec.Command("dot", "-Tpng", "-o", "3dprinterNoBug.png")
 	// cmd.Stdin = &buf
 	// cmd.Run()
