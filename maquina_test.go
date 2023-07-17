@@ -525,21 +525,27 @@ func TestSuperstateFringe(t *testing.T) {
 	sm := NewStateMachine(states[1])
 	sm.OnTransitioning(onTransitioning)
 
+	expectEnter := 0
+	expectExit := 0
+	expectSEnter := 0
+	expectSExit := 0
 	for it, test := range []struct {
 		START, END                int
 		expectEnter, expectExit   int
 		expectSEnter, expectSExit int
 	}{
-		0: {START: 1, END: PARENT, expectEnter: 1, expectExit: 0, expectSEnter: 0, expectSExit: 0},
-		1: {START: PARENT, END: SUPER, expectEnter: 1, expectExit: 1, expectSEnter: 1, expectSExit: 0},
-		2: {START: SUPER, END: EXTERNAL, expectEnter: 1, expectExit: 1, expectSEnter: 1, expectSExit: 1},
-		3: {START: EXTERNAL, END: 1, expectEnter: 2, expectExit: 1, expectSEnter: 2, expectSExit: 1},
-		4: {START: 1, END: EXTERNAL, expectEnter: 2, expectExit: 2, expectSEnter: 2, expectSExit: 2},
-		5: {START: EXTERNAL, END: SUPER, expectEnter: 2, expectExit: 2, expectSEnter: 3, expectSExit: 2},
-		6: {START: SUPER, END: PARENT, expectEnter: 3, expectExit: 2, expectSEnter: 3, expectSExit: 2},
-		7: {START: PARENT, END: 1, expectEnter: 3, expectExit: 2, expectSEnter: 3, expectSExit: 2},
-		8: {START: 1, END: 2, expectEnter: 3, expectExit: 2, expectSEnter: 3, expectSExit: 2}, // Internal transition.
-		9: {START: 2, END: SUPER, expectEnter: 3, expectExit: 3, expectSEnter: 3, expectSExit: 2},
+		0: {START: 1, END: PARENT},
+		1: {START: PARENT, END: SUPER, expectExit: 1},
+		2: {START: SUPER, END: EXTERNAL, expectSExit: 1},
+		3: {START: EXTERNAL, END: 1, expectEnter: 1, expectSEnter: 1},
+		4: {START: 1, END: EXTERNAL, expectExit: 1, expectSExit: 1},
+		5: {START: EXTERNAL, END: SUPER, expectSEnter: 1},
+		6: {START: SUPER, END: PARENT, expectEnter: 1},
+		// Internal transitions.
+		7: {START: PARENT, END: 1}, 8: {START: 1, END: 2}, 9: {START: 2, END: 1}, 10: {START: 1, END: 2},
+
+		11: {START: 2, END: SUPER, expectExit: 1},
+		12: {START: SUPER, END: 2, expectEnter: 1},
 	} {
 		trigger := hyperTrig(test.START, test.END)
 		t.Run(fmt.Sprintf("iter=%d:%s", it, trigger), func(t *testing.T) {
@@ -547,23 +553,28 @@ func TestSuperstateFringe(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if enter != test.expectEnter {
-				t.Errorf("unexpected ENTER")
+			expectEnter += test.expectEnter
+			expectExit += test.expectExit
+			expectSEnter += test.expectSEnter
+			expectSExit += test.expectSExit
+
+			if enter != expectEnter {
+				t.Errorf("unexpected ENTER %d!=%d", enter, expectEnter)
 			}
-			if exit != test.expectExit {
-				t.Errorf("unexpected EXIT")
+			if exit != expectExit {
+				t.Errorf("unexpected EXIT %d!=%d", exit, expectExit)
 			}
-			if superEnter != test.expectSEnter {
-				t.Errorf("unexpected SUPENTER")
+			if superEnter != expectSEnter {
+				t.Errorf("unexpected SUPENTER %d!=%d", superEnter, expectSEnter)
 			}
-			if superExit != test.expectSExit {
-				t.Errorf("unexpected SUPEXIT %d", superExit)
-			}
-			if t.Failed() {
-				t.Errorf("lastTransition: %s", lastTransiton.String())
-				t.FailNow()
+			if superExit != expectSExit {
+				t.Errorf("unexpected SUPEXIT %d!=%d", superExit, expectSExit)
 			}
 		})
+		if t.Failed() {
+			t.Errorf("lastTransition: %s", lastTransiton.String())
+			t.FailNow()
+		}
 	}
 
 }

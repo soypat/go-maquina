@@ -119,9 +119,9 @@ func (sm *StateMachine[T]) exit(ctx context.Context, tr Transition[T], input T) 
 }
 
 func (sm *StateMachine[T]) enter(ctx context.Context, tr Transition[T], input T) {
-	// if tr.Src.parent != nil && tr.Dst.Contains(tr.Src) {
-	// 	return // Do not enter parent state if transitioning from a substate.
-	// }
+	if tr.Src.parent != nil && tr.Dst.Contains(tr.Src) {
+		return // Transition from a substate.
+	}
 	if tr.Dst.parent != nil && !tr.Dst.parent.Contains(tr.Src) {
 		newTr := tr
 		newTr.Dst = tr.Dst.parent
