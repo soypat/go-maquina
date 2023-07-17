@@ -98,6 +98,9 @@ func triggersEqual(a, b Trigger) bool          { return a == b || a == triggerWi
 func statesEqual[T input](a, b *State[T]) bool { return a.label == b.label }
 
 func (sm *StateMachine[T]) exit(ctx context.Context, tr Transition[T], input T) {
+	if tr.Dst.parent != nil && tr.Src.Contains(tr.Dst) {
+		return // Do not exit parent state if transitioning to a substate.
+	}
 	s := tr.Src
 	for i := 0; i < len(s.exitFuncs); i++ {
 		if triggersEqual(s.exitFuncs[i].t, tr.Trigger) {
@@ -108,8 +111,7 @@ func (sm *StateMachine[T]) exit(ctx context.Context, tr Transition[T], input T) 
 			fringe.cb(ctx, tr, input)
 		}
 	}
-	if tr.Src.parent != nil && tr.Dst.parent != tr.Src.parent {
-		// Exit parent state if it exists and is not the destination state's parent.
+	if tr.Src.parent != nil && !tr.Src.parent.Contains(tr.Dst) {
 		newTr := tr
 		newTr.Src = tr.Src.parent
 		sm.exit(ctx, newTr, input)
@@ -117,12 +119,15 @@ func (sm *StateMachine[T]) exit(ctx context.Context, tr Transition[T], input T) 
 }
 
 func (sm *StateMachine[T]) enter(ctx context.Context, tr Transition[T], input T) {
-	s := tr.Dst
-	if tr.Dst.parent != nil && tr.Dst.parent != tr.Src.parent {
+	// if tr.Src.parent != nil && tr.Dst.Contains(tr.Src) {
+	// 	return // Do not enter parent state if transitioning from a substate.
+	// }
+	if tr.Dst.parent != nil && !tr.Dst.parent.Contains(tr.Src) {
 		newTr := tr
 		newTr.Dst = tr.Dst.parent
 		sm.enter(ctx, newTr, input)
 	}
+	s := tr.Dst
 	for i := 0; i < len(s.entryFuncs); i++ {
 		if triggersEqual(s.entryFuncs[i].t, tr.Trigger) {
 			fringe := s.entryFuncs[i].f

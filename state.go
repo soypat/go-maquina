@@ -44,26 +44,31 @@ func (s *State[T]) LinkSubstates(substates ...*State[T]) error {
 		if substates[i].parent != nil {
 			return errors.New("state " + substates[i].Label() + " already has parent " + substates[i].parent.Label())
 		}
-		if s.IsSubstateOf(substates[i]) {
+		if s.isSubstateOf(substates[i]) {
 			return errors.New("making " + substates[i].Label() + " a substate of " + s.Label() + " would cause a referential cycle")
 		}
 		substates[i].parent = s
 	}
-
 	return nil
 }
 
-// IsSubstateOf returns true if the receiver state s is a substate of the given
+// isSubstateOf returns true if the receiver state s is a substate of the given
 // maybeParent state or if states are equal to each other.
-func (s *State[T]) IsSubstateOf(maybeParent *State[T]) bool {
-	if maybeParent == nil {
+func (s *State[T]) isSubstateOf(maybeParent *State[T]) bool {
+	return maybeParent.Contains(s)
+}
+
+// Contains returns true if the argument maybeSubstate is a substate of the receiver s.
+func (s *State[T]) Contains(maybeSubstate *State[T]) bool {
+	parent := s
+	if parent == nil {
 		return false
 	}
-	for s != nil {
-		if statesEqual(s, maybeParent) {
+	for maybeSubstate != nil {
+		if statesEqual(maybeSubstate, parent) {
 			return true
 		}
-		s = s.parent
+		maybeSubstate = maybeSubstate.parent // Walk up the ancestry.
 	}
 	return false
 }

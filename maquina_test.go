@@ -279,18 +279,22 @@ func TestGuardClauseError(t *testing.T) {
 	}
 }
 
+func hyperTrig(start, end int) Trigger {
+	return Trigger("T" + strconv.Itoa(start) + "→" + strconv.Itoa(end))
+}
+
 func hyperStates(n int) []*State[int] {
 	states := make([]*State[int], n)
 	for i := 0; i < n; i++ {
 		states[i] = NewState("S"+strconv.Itoa(i), i)
 		for j := i - 1; j >= 0; j-- {
-			trigger := Trigger("T" + strconv.Itoa(i) + "→" + strconv.Itoa(j))
+			trigger := hyperTrig(i, j)
 			states[i].Permit(trigger, states[j])
 		}
 	}
 	for i := 0; i < n; i++ {
 		for j := i + 1; j < n; j++ {
-			trigger := Trigger("T" + strconv.Itoa(i) + "→" + strconv.Itoa(j))
+			trigger := hyperTrig(i, j)
 			states[i].Permit(trigger, states[j])
 		}
 	}
@@ -401,7 +405,7 @@ func TestMustPanics(t *testing.T) {
 	}
 }
 
-func ExampleSimpleStateDrawing() {
+func ExampleWriteDOT_simple() {
 	state1 := NewState("state1", 1)
 	state2 := NewState("state2", 2)
 	state1.Permit("trigger", state2)
@@ -437,6 +441,131 @@ func TestTriggersAvailable(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestLinkSubstates(t *testing.T) {
+	states := hyperStates(5)
+	parent := states[0]
+	superParent := states[4]
+	err := parent.LinkSubstates(states[1], states[2])
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = superParent.LinkSubstates(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !parent.isSubstateOf(superParent) {
+		t.Error("expected parent to be substate of superParent")
+	}
+
+	if !states[1].isSubstateOf(parent) || !states[2].isSubstateOf(parent) {
+		t.Error("expected linked substate")
+	}
+	if states[3].isSubstateOf(parent) {
+		t.Error("did not expect linked substate")
+	}
+
+	if !states[1].isSubstateOf(superParent) || !states[2].isSubstateOf(superParent) {
+		t.Error("expected linked substate")
+	}
+	if states[3].isSubstateOf(superParent) {
+		t.Error("did not expect linked substate")
+	}
+
+	err = states[1].LinkSubstates(parent)
+	if err == nil {
+		t.Error("expected cyclic linking error, got nil")
+	}
+	err = parent.LinkSubstates(states[1])
+	if err == nil {
+		t.Error("expected error on linking already linked state, got nil")
+	}
+	err = parent.LinkSubstates(nil)
+	if err == nil {
+		t.Error("expected error on linking nil state, got nil")
+	}
+}
+
+func TestSuperstateFringe(t *testing.T) {
+	const (
+		PARENT   = 0
+		SUPER    = 4
+		EXTERNAL = 3 // State with no parent.
+	)
+	states := hyperStates(5)
+	parent := states[PARENT]
+	superParent := states[SUPER]
+	parent.LinkSubstates(states[1], states[2])
+	superParent.LinkSubstates(parent)
+	var enter, exit, superEnter, superExit int
+	var lastTransiton intTransition
+	var (
+		fringeEnter = NewFringeCallback("enter", func(_ context.Context, _ intTransition, _ int) {
+			enter++
+		})
+		fringeExit = NewFringeCallback("exit", func(_ context.Context, _ intTransition, _ int) {
+			exit++
+		})
+		superFringeEnter = NewFringeCallback("superEnter", func(_ context.Context, _ intTransition, _ int) {
+			superEnter++
+		})
+		superFringeExit = NewFringeCallback("superExit", func(_ context.Context, _ intTransition, _ int) {
+			superExit++
+		})
+		onTransitioning = NewFringeCallback("onTransition", func(_ context.Context, tr intTransition, _ int) {
+			lastTransiton = tr
+		})
+	)
+	parent.OnEntry(fringeEnter)
+	parent.OnExit(fringeExit)
+	superParent.OnEntry(superFringeEnter)
+	superParent.OnExit(superFringeExit)
+
+	sm := NewStateMachine(states[1])
+	sm.OnTransitioning(onTransitioning)
+
+	for it, test := range []struct {
+		START, END                int
+		expectEnter, expectExit   int
+		expectSEnter, expectSExit int
+	}{
+		0: {START: 1, END: PARENT, expectEnter: 1, expectExit: 0, expectSEnter: 0, expectSExit: 0},
+		1: {START: PARENT, END: SUPER, expectEnter: 1, expectExit: 1, expectSEnter: 1, expectSExit: 0},
+		2: {START: SUPER, END: EXTERNAL, expectEnter: 1, expectExit: 1, expectSEnter: 1, expectSExit: 1},
+		3: {START: EXTERNAL, END: 1, expectEnter: 2, expectExit: 1, expectSEnter: 2, expectSExit: 1},
+		4: {START: 1, END: EXTERNAL, expectEnter: 2, expectExit: 2, expectSEnter: 2, expectSExit: 2},
+		5: {START: EXTERNAL, END: SUPER, expectEnter: 2, expectExit: 2, expectSEnter: 3, expectSExit: 2},
+		6: {START: SUPER, END: PARENT, expectEnter: 3, expectExit: 2, expectSEnter: 3, expectSExit: 2},
+		7: {START: PARENT, END: 1, expectEnter: 3, expectExit: 2, expectSEnter: 3, expectSExit: 2},
+		8: {START: 1, END: 2, expectEnter: 3, expectExit: 2, expectSEnter: 3, expectSExit: 2}, // Internal transition.
+		9: {START: 2, END: SUPER, expectEnter: 3, expectExit: 3, expectSEnter: 3, expectSExit: 2},
+	} {
+		trigger := hyperTrig(test.START, test.END)
+		t.Run(fmt.Sprintf("iter=%d:%s", it, trigger), func(t *testing.T) {
+			err := sm.FireBg(trigger, it)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if enter != test.expectEnter {
+				t.Errorf("unexpected ENTER")
+			}
+			if exit != test.expectExit {
+				t.Errorf("unexpected EXIT")
+			}
+			if superEnter != test.expectSEnter {
+				t.Errorf("unexpected SUPENTER")
+			}
+			if superExit != test.expectSExit {
+				t.Errorf("unexpected SUPEXIT %d", superExit)
+			}
+			if t.Failed() {
+				t.Errorf("lastTransition: %s", lastTransiton.String())
+				t.FailNow()
+			}
+		})
+	}
+
 }
 
 func BenchmarkHyper(b *testing.B) {
