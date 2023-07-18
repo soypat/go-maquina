@@ -576,6 +576,25 @@ func TestSuperstateFringe(t *testing.T) {
 			t.FailNow()
 		}
 	}
+}
+
+func ExampleMermaid() {
+	const (
+		PARENT   = 0
+		SUPER    = 4
+		EXTERNAL = 3 // State with no parent.
+	)
+	states := hyperStates(5)
+	parent := states[PARENT]
+	superParent := states[SUPER]
+	parent.LinkSubstates(states[1], states[2])
+	superParent.LinkSubstates(parent)
+
+	sm := NewStateMachine(parent)
+	var buf bytes.Buffer
+	writeMermaidStateDiagram(&buf, sm, diagConfig{})
+	fmt.Println(buf.String())
+	//Unordered output:
 
 }
 

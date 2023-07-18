@@ -91,6 +91,7 @@ The code below outputs the following DOT graph code. Note how parent/super state
 ![algorithmic trading example](https://user-images.githubusercontent.com/26156425/253708380-8095da85-c6f2-49eb-8721-bf2747dc5330.png)
 
 
+
 ```go
 	getStock := func() string {
 		return string([]byte{byte(rand.Intn(26)) + 'A', byte(rand.Intn(26)) + 'A', byte(rand.Intn(26)) + 'A'})
