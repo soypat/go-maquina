@@ -594,8 +594,6 @@ func ExampleMermaid() {
 	var buf bytes.Buffer
 	writeMermaidStateDiagram(&buf, sm, diagConfig{})
 	fmt.Println(buf.String())
-	//Unordered output:
-
 }
 
 func BenchmarkHyper(b *testing.B) {
